@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "dev:local": "set NODE_OPTIONS=--dns-result-order=ipv4first && set NODE_TLS_REJECT_UNAUTHORIZED=0 && next dev"
   },
   "dependencies": {
     "next": "16.2.6",

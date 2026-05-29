@@ -143,7 +143,16 @@ export async function getPullRequestMeta(params: {
 
   const url = `${API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pullNumber}`;
 
-  const res = await fetch(url, { headers });
+  let res: Response;
+  try {
+    res = await fetch(url, { headers });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new GitHubApiError({
+      code: "GITHUB_API_ERROR",
+      message: `无法连接到 GitHub API：${detail}`,
+    });
+  }
 
   if (!res.ok) {
     await handleErrorResponse(res);
@@ -183,7 +192,16 @@ export async function getChangedFiles(params: {
 
   const url = `${API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pullNumber}/files?per_page=100`;
 
-  const res = await fetch(url, { headers });
+  let res: Response;
+  try {
+    res = await fetch(url, { headers });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new GitHubApiError({
+      code: "GITHUB_API_ERROR",
+      message: `无法连接到 GitHub API：${detail}`,
+    });
+  }
 
   if (!res.ok) {
     await handleErrorResponse(res);
