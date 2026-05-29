@@ -2,10 +2,15 @@ import { NextResponse } from "next/server";
 import type { AnalyzePrRequest, AnalyzePrResponse } from "@/types";
 import { mockPr, mockReview } from "@/mocks";
 import { parsePrUrl, ParsePrUrlError } from "@/services/github/parsePrUrl";
+import {
+  getPullRequestMeta,
+  getChangedFiles,
+  GitHubApiError,
+} from "@/services/github/githubClient";
 
 // ============================================================
 // POST /api/analyze-pr
-// PR4: Mock Analysis Flow — 不接入真实 GitHub / AI API
+// PR5: 接入真实 GitHub API，失败时 fallback 到 mock
 // ============================================================
 
 /** 500 响应 */
@@ -23,7 +28,7 @@ const unknownErrorResponse: AnalyzePrResponse = {
  * 分析 Pull Request
  *
  * - useMock=true: 直接返回 mockPr + mockReview
- * - useMock!=true: 要求提供 url，解析校验后仍返回 mock 数据（PR4 不接真实 API）
+ * - useMock!=true: 解析 url → 调用 GitHub API → 成功返回真实数据，失败 fallback 到 mock
  */
 export async function POST(request: Request) {
   // 1. 解析 JSON body
@@ -74,9 +79,11 @@ export async function POST(request: Request) {
     );
   }
 
-  // 4. 解析 PR URL
+  // 4. 解析 PR URL（保存解析结果供步骤 5 使用）
+  let parsed;
+
   try {
-    parsePrUrl(body.url);
+    parsed = parsePrUrl(body.url);
   } catch (error) {
     if (error instanceof ParsePrUrlError) {
       return NextResponse.json<AnalyzePrResponse>(
@@ -98,11 +105,36 @@ export async function POST(request: Request) {
     });
   }
 
-  // 5. PR4: URL 合法，但仍返回 mock 数据（mode 标记为 mock，不伪装真实分析）
-  return NextResponse.json<AnalyzePrResponse>({
-    success: true,
-    mode: "mock",
-    pullRequest: mockPr,
-    reviewResult: mockReview,
-  });
+  // 5. 调用真实 GitHub API；失败时 fallback 到 mock
+  try {
+    const [pr, changedFiles] = await Promise.all([
+      getPullRequestMeta(parsed),
+      getChangedFiles(parsed),
+    ]);
+
+    return NextResponse.json<AnalyzePrResponse>({
+      success: true,
+      mode: "mock",
+      pullRequest: pr,
+      reviewResult: mockReview,
+      changedFiles,
+      ruleCheckResults: [],
+      source: "github",
+    });
+  } catch (error) {
+    if (error instanceof GitHubApiError) {
+      return NextResponse.json<AnalyzePrResponse>({
+        success: true,
+        mode: "mock",
+        pullRequest: mockPr,
+        reviewResult: mockReview,
+        source: "mock",
+        warning: error.message,
+      });
+    }
+
+    return NextResponse.json<AnalyzePrResponse>(unknownErrorResponse, {
+      status: 500,
+    });
+  }
 }
