@@ -83,6 +83,7 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 }
 
 function getPrLabel(prUrl: string) {
+    
     try {
         const url = new URL(prUrl);
         const parts = url.pathname.split("/").filter(Boolean);

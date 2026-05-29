@@ -60,3 +60,47 @@ export interface FeatureCard {
   icon: "flash" | "shield" | "message";
   tone: "blue" | "green" | "purple";
 }
+
+// ============================================================
+// API 请求/响应类型
+// ============================================================
+
+/** 解析后的 PR 链接 */
+export interface ParsedPullRequestUrl {
+  owner: string;
+  repo: string;
+  pullNumber: number;
+  url: string;
+}
+
+/** 分析模式 */
+export type AnalyzeMode = "real" | "mock";
+
+/** 应用层错误码 */
+export type AppErrorCode =
+  | "INVALID_PR_URL"
+  | "MOCK_MODE"
+  | "UNKNOWN_ERROR";
+
+/** 应用层错误 */
+export interface AppError {
+  code: AppErrorCode;
+  message: string;
+  detail?: string;
+  recoverable: boolean;
+}
+
+/** POST /api/analyze-pr 请求 */
+export interface AnalyzePrRequest {
+  url?: string;
+  useMock?: boolean;
+}
+
+/** POST /api/analyze-pr 响应 */
+export interface AnalyzePrResponse {
+  success: boolean;
+  mode: AnalyzeMode;
+  pullRequest?: PullRequestMeta;
+  reviewResult?: ReviewResult;
+  error?: AppError;
+}
