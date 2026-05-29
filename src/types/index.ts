@@ -1,15 +1,5 @@
-// ============================================================
-// PR Lens — Domain Types
-// ============================================================
-
-/**
- * 风险等级
- */
 export type RiskLevel = "HIGH" | "MEDIUM" | "LOW";
 
-/**
- * Review 中发现的一项风险
- */
 export interface ReviewRisk {
   id: string;
   level: RiskLevel;
@@ -20,9 +10,6 @@ export interface ReviewRisk {
   requiresHumanCheck: boolean;
 }
 
-/**
- * Review 中给出的一条改进建议
- */
 export interface ReviewSuggestion {
   id: string;
   title: string;
@@ -35,18 +22,12 @@ export interface ReviewSuggestion {
   suggestion: string;
 }
 
-/**
- * 一次 Review 的完整结果
- */
 export interface ReviewResult {
   summary: string;
   risks: ReviewRisk[];
   suggestions: ReviewSuggestion[];
 }
 
-/**
- * Pull Request 元信息
- */
 export interface PullRequestMeta {
   title: string;
   author: string;
@@ -56,16 +37,26 @@ export interface PullRequestMeta {
   deletions: number;
 }
 
-/**
- * 分析状态
- */
-export type AnalysisStatus = "analyzing" | "success" | "error";
+export type AnalysisStatus = "idle" | "analyzing" | "success" | "error";
 
-/**
- * 分析步骤
- */
 export interface AnalysisStep {
   id: string;
   title: string;
   description: string;
+}
+
+export interface ExamplePR {
+  id: string;
+  repo: string;
+  prNumber: string;
+  title: string;
+  url: string;
+}
+
+export interface FeatureCard {
+  id: string;
+  title: string;
+  description: string;
+  icon: "flash" | "shield" | "message";
+  tone: "blue" | "green" | "purple";
 }

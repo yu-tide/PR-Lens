@@ -1,70 +1,86 @@
-import type { ReviewResult } from "@/types";
+import type { AnalysisStep, ReviewResult } from "@/types";
 
-/**
- * Mock Review 结果
- */
 export const mockReview: ReviewResult = {
   summary:
-    "该 PR 对鉴权 token 校验逻辑进行了重构，将原先同步校验改为异步 token 刷新 + 缓存双写方案，" +
-    "涉及 auth service 核心校验链路、session middleware 生命周期管理，以及相关单元测试与集成测试的更新。" +
-    "整体变更范围可控，但核心安全逻辑的修改需要额外的人工复核。",
-
+    "该 PR 修改了鉴权 token 校验逻辑，影响 auth service、session middleware 和相关测试覆盖。整体方向合理，但 token 校验逻辑和 session 过期处理需要重点人工确认。",
   risks: [
     {
-      id: "risk-001",
+      id: "risk-1",
       level: "HIGH",
       title: "Token 校验逻辑变更需要人工确认",
       file: "src/services/auth.ts",
       reason:
-        "auth.ts 中的 token 校验逻辑从同步硬性拒绝改为异步刷新后放行，" +
-        "变更涉及核心安全路径。若刷新逻辑存在缺陷，可能导致已过期或伪造的 token 被错误放行。",
+        "该文件涉及核心鉴权逻辑，如果 token 解析、过期判断或签名校验出现问题，可能导致未授权访问或误拦截合法请求。",
       suggestion:
-        "建议在合入前由安全负责人对 token 刷新分支的条件覆盖、错误回退路径进行逐行审查，" +
-        "并补充 token 伪造场景的集成测试。",
+        "建议重点人工检查 token 校验分支，确认过期 token、无效 token 和缺失 token 的处理逻辑都符合预期。",
       requiresHumanCheck: true,
     },
     {
-      id: "risk-002",
+      id: "risk-2",
       level: "MEDIUM",
-      title: "Session 过期处理需补充边界测试",
+      title: "Session 过期处理需要补充边界测试",
       file: "src/middleware/session.ts",
       reason:
-        "session middleware 在 token 过期后的降级逻辑仅覆盖了 HTTP 401 状态，" +
-        "未覆盖网络超时、Redis 连接中断等异常场景，可能导致用户会话状态不一致。",
+        "session 过期时间附近的边界情况可能导致用户状态异常，例如刚过期、即将过期或刷新 session 时行为不一致。",
       suggestion:
-        "建议补充以下边界测试用例：网络超时后的 session 清理、" +
-        "Redis 不可用时的优雅降级、并发刷新 token 时的幂等性验证。",
+        "建议补充 session 过期边界测试，覆盖临界时间、刷新 token 和异常 session 状态。",
       requiresHumanCheck: false,
     },
   ],
-
   suggestions: [
     {
-      id: "sug-001",
-      title: "Token 刷新分支缺少返回值校验",
+      id: "suggestion-1",
       category: "Correctness",
+      title: "补充 token 校验失败场景",
       suggestion:
-        "在 asyncRefreshToken 函数中，当 HTTP 响应状态为非 200 时应显式抛出异常，" +
-        "避免将空字符串或错误响应体误写入 token 缓存，导致后续请求携带无效凭证。",
+        "建议补充无效 token、过期 token、缺失 token 和格式错误 token 的单元测试。",
     },
     {
-      id: "sug-002",
-      title: "Token 缓存键应使用常量而非硬编码字符串",
+      id: "suggestion-2",
       category: "Security",
+      title: "确认错误信息不会泄露敏感细节",
       suggestion:
-        "当前代码中多处使用硬编码字符串 'auth:token' 作为缓存键。" +
-        "建议抽取为模块级常量 CACHE_KEY_TOKEN，避免因拼写不一致导致缓存穿透或污染。" +
-        "同时建议对缓存键增加前缀命名空间，防止与其他模块的缓存键冲突。",
+        "建议检查鉴权失败时返回的错误信息，避免暴露 token 解析细节或内部校验规则。",
     },
     {
-      id: "sug-003",
-      title: "缺少针对异常场景的单元测试覆盖",
+      id: "suggestion-3",
       category: "Testing",
+      title: "增加 session middleware 集成测试",
       suggestion:
-        "当前测试用例仅覆盖了正常刷新路径，建议新增以下测试：" +
-        "（1）refresh API 返回 500 时的重试与降级行为；" +
-        "（2）refresh API 超时后的兜底逻辑；" +
-        "（3）并发刷新时的竞态条件测试。",
+        "建议添加 middleware 层面的集成测试，确保请求链路中的鉴权状态和 session 状态一致。",
     },
   ],
 };
+
+export const analysisSteps: AnalysisStep[] = [
+  {
+    id: "parse-url",
+    title: "解析 PR 链接",
+    description: "校验 GitHub Pull Request 地址格式",
+  },
+  {
+    id: "fetch-pr",
+    title: "获取 PR 信息",
+    description: "读取标题、作者、分支与提交记录",
+  },
+  {
+    id: "fetch-files",
+    title: "拉取变更文件",
+    description: "获取新增、删除和修改的代码文件",
+  },
+  {
+    id: "rule-check",
+    title: "执行规则检查",
+    description: "识别格式、风险和潜在变更影响",
+  },
+  {
+    id: "ai-review",
+    title: "AI 生成审查建议",
+    description: "生成摘要、风险提示和 Review 建议",
+  },
+  {
+    id: "report",
+    title: "生成 Markdown 报告",
+    description: "整理为可复制的 PR 审查报告",
+  },
+];
