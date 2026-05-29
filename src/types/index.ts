@@ -55,3 +55,17 @@ export interface PullRequestMeta {
   additions: number;
   deletions: number;
 }
+
+/**
+ * 分析状态
+ */
+export type AnalysisStatus = "analyzing" | "success" | "error";
+
+/**
+ * 分析步骤
+ */
+export interface AnalysisStep {
+  id: string;
+  title: string;
+  description: string;
+}
