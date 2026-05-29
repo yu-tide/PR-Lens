@@ -1,0 +1,399 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { AnalysisStatus, AnalysisStep } from "@/types";
+
+type AnalysisFloatingPanelProps = {
+    open: boolean;
+    status: AnalysisStatus;
+    currentStep: number;
+    steps: AnalysisStep[];
+    prUrl: string;
+    errorMessage?: string;
+    onClose: () => void;
+    onRetry: () => void;
+    onViewResult: () => void;
+};
+
+function SpinnerIcon({ className = "" }: { className?: string }) {
+    return (
+        <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none">
+            <circle
+                cx="12"
+                cy="12"
+                r="9"
+                stroke="currentColor"
+                strokeWidth="3"
+                className="opacity-20"
+            />
+            <path
+                d="M21 12a9 9 0 0 0-9-9"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+            />
+        </svg>
+    );
+}
+
+function CheckIcon({ className = "" }: { className?: string }) {
+    return (
+        <svg viewBox="0 0 24 24" className={className} fill="none">
+            <path
+                d="m5 12 4 4 10-10"
+                stroke="currentColor"
+                strokeWidth="2.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+function CloseIcon() {
+    return (
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
+            <path
+                d="M6 6l12 12M18 6 6 18"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+            />
+        </svg>
+    );
+}
+
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+    return (
+        <svg
+            viewBox="0 0 24 24"
+            className={`h-4 w-4 transition-transform duration-300 ${expanded ? "rotate-180" : ""
+                }`}
+            fill="none"
+        >
+            <path
+                d="m6 9 6 6 6-6"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+function getPrLabel(prUrl: string) {
+    try {
+        const url = new URL(prUrl);
+        const parts = url.pathname.split("/").filter(Boolean);
+
+        const owner = parts[0];
+        const repo = parts[1];
+        const number = parts[3];
+
+        if (!owner || !repo || !number) return "GitHub Pull Request";
+
+        return `${owner}/${repo} #${number}`;
+    } catch {
+        return "GitHub Pull Request";
+    }
+}
+
+export function AnalysisFloatingPanel({
+    open,
+    status,
+    currentStep,
+    steps,
+    prUrl,
+    errorMessage,
+    onClose,
+    onRetry,
+    onViewResult,
+}: AnalysisFloatingPanelProps) {
+    const [entered, setEntered] = useState(false);
+    const [expanded, setExpanded] = useState(false);
+
+    useEffect(() => {
+        if (!open) {
+            const frame = requestAnimationFrame(() => {
+                setEntered(false);
+                setExpanded(false);
+            });
+            return () => cancelAnimationFrame(frame);
+        }
+
+        const frame = requestAnimationFrame(() => {
+            setEntered(true);
+        });
+
+        return () => cancelAnimationFrame(frame);
+    }, [open]);
+
+    useEffect(() => {
+        if (status === "success") {
+            const frame = requestAnimationFrame(() => {
+                setExpanded(false);
+            });
+            return () => cancelAnimationFrame(frame);
+        }
+    }, [status]);
+
+    const safeStepLength = Math.max(steps.length, 1);
+    const currentStepItem = steps[currentStep];
+
+    const progress = useMemo(() => {
+        if (status === "success") return 100;
+
+        if (status === "error") {
+            return Math.max(12, Math.round((currentStep / safeStepLength) * 100));
+        }
+
+        return Math.min(
+            96,
+            Math.max(8, Math.round(((currentStep + 0.7) / safeStepLength) * 100)),
+        );
+    }, [currentStep, safeStepLength, status]);
+
+    const title =
+        status === "success"
+            ? "分析完成"
+            : status === "error"
+                ? "分析失败"
+                : "正在分析 PR";
+
+    const subtitle =
+        status === "success"
+            ? "报告已生成，可以查看完整审查结果"
+            : status === "error"
+                ? "分析任务中断，请检查链接或重试"
+                : currentStepItem?.title ?? "准备开始分析";
+
+    const detail =
+        status === "success"
+            ? "已生成摘要、风险提示和 Review 建议"
+            : status === "error"
+                ? errorMessage || "无法完成分析，请稍后重试"
+                : currentStepItem?.description ?? "正在准备分析任务";
+
+    const statusDotClass =
+        status === "success"
+            ? "bg-emerald-500"
+            : status === "error"
+                ? "bg-red-500"
+                : "bg-blue-500";
+
+    const progressClass =
+        status === "success"
+            ? "bg-emerald-500"
+            : status === "error"
+                ? "bg-red-500"
+                : "bg-blue-600";
+
+    if (!open) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 sm:px-6">
+            <div
+                className={`absolute inset-0 bg-slate-950/25 backdrop-blur-md transition-opacity duration-300 ${entered ? "opacity-100" : "opacity-0"
+                    }`}
+            />
+
+            <div
+                className={`relative flex max-h-[calc(100vh-64px)] w-full max-w-[560px] flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-2xl shadow-slate-950/20 backdrop-blur-xl transition-all duration-300 ease-out ${entered
+                    ? "translate-y-0 scale-100 opacity-100"
+                    : "translate-y-6 scale-95 opacity-0"
+                    }`}
+            >
+                <div className="relative shrink-0 overflow-hidden border-b border-slate-100 px-6 py-5">
+                    <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-blue-100 blur-3xl" />
+                    <div className="pointer-events-none absolute -left-16 bottom-0 h-40 w-40 rounded-full bg-indigo-100 blur-3xl" />
+
+                    <div className="relative flex items-start justify-between gap-5">
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-3">
+                                <span className={`relative h-3 w-3 rounded-full ${statusDotClass}`}>
+                                    {status === "analyzing" && (
+                                        <span className="absolute inset-0 animate-ping rounded-full bg-blue-500 opacity-40" />
+                                    )}
+                                </span>
+
+                                <h3 className="text-xl font-semibold tracking-tight text-slate-950">
+                                    {title}
+                                </h3>
+                            </div>
+
+                            <p className="mt-2 text-sm font-medium text-slate-500">
+                                {getPrLabel(prUrl)}
+                            </p>
+                        </div>
+
+                        <button
+                            onClick={onClose}
+                            className="rounded-2xl p-2 text-slate-400 transition hover:bg-white/80 hover:text-slate-700"
+                            aria-label="关闭"
+                        >
+                            <CloseIcon />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-6 py-5">
+                    <div className="rounded-[22px] border border-slate-100 bg-slate-50/80 p-4">
+                        <div className="flex items-center gap-5">
+                            <div
+                                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${status === "success"
+                                    ? "bg-emerald-50 text-emerald-600"
+                                    : status === "error"
+                                        ? "bg-red-50 text-red-600"
+                                        : "bg-blue-50 text-blue-600"
+                                    }`}
+                            >
+                                {status === "success" ? (
+                                    <CheckIcon className="h-7 w-7" />
+                                ) : status === "error" ? (
+                                    <span className="text-2xl font-semibold">!</span>
+                                ) : (
+                                    <SpinnerIcon className="h-6 w-6" />
+                                )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                                <p className="text-base font-semibold text-slate-900">
+                                    {subtitle}
+                                </p>
+                                <p className="mt-1 text-sm leading-6 text-slate-500">
+                                    {detail}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="mt-6">
+                            <div className="mb-2 flex items-center justify-between text-xs font-medium text-slate-500">
+                                <span>{status === "success" ? "完成进度" : "分析进度"}</span>
+                                <span>{progress}%</span>
+                            </div>
+
+                            <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                    className={`h-full rounded-full transition-all duration-700 ease-out ${progressClass}`}
+                                    style={{ width: `${progress}%` }}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mt-4 flex items-center gap-2">
+                            {steps.map((step, index) => {
+                                const isDone = status === "success" || index < currentStep;
+                                const isCurrent = status === "analyzing" && index === currentStep;
+
+                                return (
+                                    <div
+                                        key={step.id}
+                                        className={`h-2 flex-1 rounded-full transition-all duration-500 ${isDone
+                                            ? "bg-emerald-400"
+                                            : isCurrent
+                                                ? "bg-blue-500"
+                                                : "bg-slate-200"
+                                            }`}
+                                    />
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => setExpanded((value) => !value)}
+                        className="mt-5 flex w-full items-center justify-between rounded-2xl px-1 py-2 text-sm font-medium text-slate-500 transition hover:text-slate-800"
+                    >
+                        <span>{expanded ? "收起分析步骤" : "查看分析步骤"}</span>
+                        <ChevronIcon expanded={expanded} />
+                    </button>
+
+                    <div
+                        className={`grid transition-all duration-300 ease-out ${expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                            }`}
+                    >
+                        <div className="overflow-hidden">
+                            <div className="mt-2 max-h-[260px] space-y-2 overflow-y-auto pr-1">
+                                {steps.map((step, index) => {
+                                    const isDone = status === "success" || index < currentStep;
+                                    const isCurrent = status === "analyzing" && index === currentStep;
+
+                                    return (
+                                        <div
+                                            key={step.id}
+                                            className={`flex gap-3 rounded-2xl px-3.5 py-2.5 transition-colors duration-300 ${isCurrent
+                                                ? "bg-blue-50"
+                                                : isDone
+                                                    ? "bg-emerald-50/70"
+                                                    : "bg-slate-50/70"
+                                                }`}
+                                        >
+                                            <div
+                                                className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors duration-300 ${isDone
+                                                    ? "bg-emerald-500 text-white"
+                                                    : isCurrent
+                                                        ? "bg-blue-600 text-white"
+                                                        : "bg-slate-200 text-slate-400"
+                                                    }`}
+                                            >
+                                                {isDone ? (
+                                                    <CheckIcon className="h-4 w-4" />
+                                                ) : isCurrent ? (
+                                                    <SpinnerIcon className="h-4 w-4" />
+                                                ) : (
+                                                    <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                                                )}
+                                            </div>
+
+                                            <div className="min-w-0">
+                                                <p
+                                                    className={`text-sm font-semibold ${isCurrent || isDone
+                                                        ? "text-slate-900"
+                                                        : "text-slate-500"
+                                                        }`}
+                                                >
+                                                    {step.title}
+                                                </p>
+                                                <p className="mt-1 text-xs leading-5 text-slate-500">
+                                                    {step.description}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="shrink-0 flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/80 px-6 py-4">
+                    {status === "error" && (
+                        <button
+                            onClick={onRetry}
+                            className="rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:border-blue-200 hover:text-blue-600"
+                        >
+                            重新分析
+                        </button>
+                    )}
+
+                    {status === "success" ? (
+                        <button
+                            onClick={onViewResult}
+                            className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:-translate-y-0.5 hover:bg-blue-700 active:translate-y-0"
+                        >
+                            查看分析结果
+                        </button>
+                    ) : status === "analyzing" ? (
+                        <button
+                            disabled
+                            className="rounded-2xl bg-slate-200 px-6 py-3 text-sm font-semibold text-slate-500"
+                        >
+                            分析中...
+                        </button>
+                    ) : null}
+                </div>
+            </div>
+        </div>
+    );
+}

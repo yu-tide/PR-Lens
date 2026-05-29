@@ -28,23 +28,48 @@ PR Lens 支持以下核心流程：
 
 ---
 技术栈
-暂时无法在飞书文档外展示此内容
+- Next.js 16 (App Router)
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- GitHub REST API
+- ESLint
 
 ---
 快速开始
-1. 安装依赖
-npm install
-2. 配置环境变量
-cp .env.example .env.local
-GITHUB_TOKEN=your_github_token_here
 
+1. 安装依赖
+
+```bash
+npm install
+```
+
+2. 配置环境变量
+
+```bash
+# macOS / Linux
+cp .env.example .env.local
+
+# Windows PowerShell
+Copy-Item .env.example .env.local
+```
+
+然后编辑 .env.local 填入真实的 API Key：
+
+```
+GITHUB_TOKEN=your_github_token_here
 AI_API_KEY=your_ai_api_key_here
 AI_BASE_URL=https://api.example.com
 AI_MODEL_NAME=model-name
+```
+
 3. 启动项目
+
+```bash
 npm run dev
-访问：
-http://localhost:3000
+```
+
+访问：http://localhost:3000
 
 ---
 项目结构
