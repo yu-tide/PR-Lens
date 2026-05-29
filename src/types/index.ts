@@ -35,6 +35,13 @@ export interface PullRequestMeta {
   changedFiles: number;
   additions: number;
   deletions: number;
+  owner?: string;
+  repo?: string;
+  pullNumber?: number;
+  description?: string;
+  baseBranch?: string;
+  headBranch?: string;
+  url?: string;
 }
 
 export type AnalysisStatus = "idle" | "analyzing" | "success" | "error";
@@ -103,4 +110,56 @@ export interface AnalyzePrResponse {
   pullRequest?: PullRequestMeta;
   reviewResult?: ReviewResult;
   error?: AppError;
+  changedFiles?: ChangedFile[];
+  ruleCheckResults?: RuleCheckResult[];
+  source?: "github" | "mock";
+  warning?: string;
 }
+
+// ============================================================
+// GitHub 数据与服务类型
+// ============================================================
+
+/** 变更文件状态（兼容 GitHub API 返回值） */
+export type ChangedFileStatus =
+  | "added"
+  | "removed"
+  | "modified"
+  | "renamed"
+  | "copied"
+  | "changed"
+  | "unchanged";
+
+/** 单个变更文件 */
+export interface ChangedFile {
+  filename: string;
+  status: ChangedFileStatus | string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch?: string;
+  rawUrl?: string;
+  blobUrl?: string;
+  isBinary?: boolean;
+  isTooLarge?: boolean;
+}
+
+/** 规则检查严重程度 */
+export type RuleCheckSeverity = "low" | "medium" | "high";
+
+/** 规则预检查结果 */
+export interface RuleCheckResult {
+  id: string;
+  title: string;
+  message: string;
+  severity: RuleCheckSeverity;
+  file?: string;
+  line?: number;
+}
+
+/** GitHub API 错误码 */
+export type GitHubApiErrorCode =
+  | "GITHUB_API_ERROR"
+  | "GITHUB_PR_NOT_FOUND"
+  | "GITHUB_RATE_LIMIT"
+  | "GITHUB_TOKEN_MISSING";
