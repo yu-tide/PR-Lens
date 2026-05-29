@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { AnalysisFloatingPanel } from "@/components/AnalysisFloatingPanel";
 import { AppHeader } from "@/components/AppHeader";
 import { analysisSteps, examplePRs, featureCards } from "@/mocks";
-import type { AnalysisStatus, FeatureCard } from "@/types";
+import type { AnalysisStatus, AnalyzePrResponse, FeatureCard } from "@/types";
+
+const SESSION_KEY = "pr-lens:last-analysis";
 
 function GitHubIcon({ className = "" }: { className?: string }) {
   return (
@@ -113,6 +115,7 @@ export default function HomePage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
   const [currentStep, setCurrentStep] = useState(0);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const canSubmit = useMemo(() => prUrl.trim().length > 0, [prUrl]);
 
@@ -127,11 +130,64 @@ export default function HomePage() {
     }
   };
 
+  /* 共享分析流程：启动视觉进度动画 + 调用 API */
+  const runAnalysis = (
+    body: { url?: string; useMock?: boolean },
+    inputUrlForStorage: string,
+  ) => {
+    /* 视觉进度动画（不决定最终结果，API 响应是唯一权威） */
+    let stepIndex = 0;
+    timerRef.current = setInterval(() => {
+      stepIndex += 1;
+      if (stepIndex >= analysisSteps.length) {
+        clearAnalysisTimer();
+        return;
+      }
+      setCurrentStep(stepIndex);
+    }, 760);
+
+    fetch("/api/analyze-pr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then(async (res) => {
+        const data = (await res.json()) as AnalyzePrResponse;
+        clearAnalysisTimer();
+
+        if (res.ok && data.success) {
+          try {
+            sessionStorage.setItem(
+              SESSION_KEY,
+              JSON.stringify({ data, inputUrl: inputUrlForStorage }),
+            );
+          } catch {
+            /* sessionStorage 不可用时静默忽略 */
+          }
+
+          setCurrentStep(analysisSteps.length);
+          setTimeout(() => setAnalysisStatus("success"), 400);
+          return;
+        }
+
+        setAnalysisStatus("error");
+        setErrorMessage(
+          data.error?.message || "分析失败，请稍后重试",
+        );
+      })
+      .catch(() => {
+        clearAnalysisTimer();
+        setAnalysisStatus("error");
+        setErrorMessage("分析失败，请稍后重试");
+      });
+  };
+
   const startAnalyze = (targetUrl?: string) => {
     const nextUrl = targetUrl ?? prUrl.trim();
 
     setInputError("");
     clearAnalysisTimer();
+    setErrorMessage("");
 
     if (!nextUrl) {
       setInputError("请输入 GitHub Pull Request 链接。");
@@ -150,20 +206,7 @@ export default function HomePage() {
     setAnalysisStatus("analyzing");
     setCurrentStep(0);
 
-    let stepIndex = 0;
-
-    timerRef.current = setInterval(() => {
-      stepIndex += 1;
-
-      if (stepIndex >= analysisSteps.length) {
-        clearAnalysisTimer();
-        setCurrentStep(analysisSteps.length);
-        setAnalysisStatus("success");
-        return;
-      }
-
-      setCurrentStep(stepIndex);
-    }, 760);
+    runAnalysis({ url: nextUrl, useMock: false }, nextUrl);
   };
 
   const handleUseExample = () => {
@@ -171,7 +214,16 @@ export default function HomePage() {
 
     if (!exampleUrl) return;
 
-    startAnalyze(exampleUrl);
+    clearAnalysisTimer();
+    setInputError("");
+    setErrorMessage("");
+
+    setPrUrl(exampleUrl);
+    setPanelOpen(true);
+    setAnalysisStatus("analyzing");
+    setCurrentStep(0);
+
+    runAnalysis({ useMock: true }, exampleUrl);
   };
 
   const handleViewResult = () => {
@@ -286,6 +338,7 @@ export default function HomePage() {
         currentStep={currentStep}
         steps={analysisSteps}
         prUrl={prUrl}
+        errorMessage={errorMessage}
         onClose={() => setPanelOpen(false)}
         onRetry={() => startAnalyze(prUrl)}
         onViewResult={handleViewResult}

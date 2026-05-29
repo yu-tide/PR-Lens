@@ -1,6 +1,10 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AppHeader } from "@/components/AppHeader";
+import type { AnalyzePrResponse } from "@/types";
 
 type RiskLevel = "high" | "medium" | "low";
 
@@ -80,6 +84,71 @@ const markdownLines = [
     "**作者**：leerob",
     "**状态**：分析完成",
 ];
+
+const SESSION_KEY = "pr-lens:last-analysis";
+
+type RiskDisplay = {
+  level: "high" | "medium" | "low";
+  label: string;
+  title: string;
+  description: string;
+  suggestion: string;
+};
+
+/** 从 GitHub PR URL 提取编号，如 "https://github.com/owner/repo/pull/123" → "#123" */
+function extractPrNumber(url: string): string {
+  try {
+    const match = url.match(/github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/);
+    if (match?.[1]) return `#${match[1]}`;
+  } catch {
+    /* 解析失败 */
+  }
+  return "#57855";
+}
+
+/** API RiskLevel → UI { level, label } */
+function mapRiskLevel(level: string): {
+  level: "high" | "medium" | "low";
+  label: string;
+} {
+  switch (level) {
+    case "HIGH":
+      return { level: "high", label: "高风险" };
+    case "MEDIUM":
+      return { level: "medium", label: "中风险" };
+    case "LOW":
+      return { level: "low", label: "低风险" };
+    default:
+      return { level: "low", label: "未知风险" };
+  }
+}
+
+/** API ReviewSuggestion.category → UI icon 名 */
+function mapCategoryToIcon(category: string): string {
+  switch (category) {
+    case "Correctness":
+      return "beaker";
+    case "Security":
+      return "chart";
+    case "Maintainability":
+      return "settings";
+    case "Testing":
+      return "beaker";
+    case "Documentation":
+      return "doc";
+    default:
+      return "doc";
+  }
+}
+
+/* 硬编码兜底数据聚合 */
+const FALLBACK = {
+  prInfo,
+  summary,
+  risks,
+  suggestions,
+  markdownLines,
+};
 
 function GithubIcon({ className = "" }: { className?: string }) {
     return (
@@ -333,7 +402,7 @@ function StatCard({
     );
 }
 
-function RiskCard({ risk }: { risk: (typeof risks)[number] }) {
+function RiskCard({ risk }: { risk: RiskDisplay }) {
     const styles = {
         high: {
             card: "border-red-200 bg-red-50/60",
@@ -391,6 +460,120 @@ function SuggestionIcon({ name }: { name: string }) {
 }
 
 export default function ResultPage() {
+    const [analysisData, setAnalysisData] =
+        useState<AnalyzePrResponse | null>(null);
+    const [inputUrl, setInputUrl] = useState("");
+
+    useEffect(() => {
+        try {
+            const raw = sessionStorage.getItem(SESSION_KEY);
+            if (!raw) return;
+
+            const parsed = JSON.parse(raw);
+
+            if (parsed?.data) {
+                setAnalysisData(parsed.data as AnalyzePrResponse);
+                setInputUrl(parsed.inputUrl ?? "");
+            }
+        } catch {
+            /* JSON 解析失败 → 静默走 FALLBACK */
+        }
+    }, []);
+
+    const isMock = analysisData?.mode === "mock";
+
+    const displayPrInfo = useMemo(() => {
+        const pr = analysisData?.pullRequest;
+        if (!pr) return FALLBACK.prInfo;
+
+        return {
+            title: pr.title,
+            repo: pr.repository,
+            prNumber: extractPrNumber(inputUrl),
+            author: pr.author,
+            changedFiles: `${pr.changedFiles} 个文件`,
+            additions: `+${pr.additions}`,
+            deletions: `-${pr.deletions}`,
+        };
+    }, [analysisData, inputUrl]);
+
+    const displaySummary = useMemo(() => {
+        const text = analysisData?.reviewResult?.summary;
+        if (!text) return FALLBACK.summary;
+
+        const lines = text
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean);
+        return lines.length > 0 ? lines : [text];
+    }, [analysisData]);
+
+    const displayRisks: RiskDisplay[] = useMemo(() => {
+        const apiRisks = analysisData?.reviewResult?.risks;
+        if (!apiRisks || apiRisks.length === 0) return FALLBACK.risks;
+
+        return apiRisks.map((r) => {
+            const mapped = mapRiskLevel(r.level);
+            return {
+                level: mapped.level,
+                label: mapped.label,
+                title: r.title,
+                description: r.reason,
+                suggestion: r.suggestion,
+            };
+        });
+    }, [analysisData]);
+
+    const displaySuggestions = useMemo(() => {
+        const apiSuggestions = analysisData?.reviewResult?.suggestions;
+        if (!apiSuggestions || apiSuggestions.length === 0)
+            return FALLBACK.suggestions;
+
+        return apiSuggestions.map((s) => ({
+            icon: mapCategoryToIcon(s.category),
+            title: s.title,
+            description: s.suggestion,
+        }));
+    }, [analysisData]);
+
+    const displayMarkdownLines = useMemo(() => {
+        if (!analysisData?.reviewResult) return FALLBACK.markdownLines;
+
+        const p = displayPrInfo;
+        const s = displaySummary;
+        const r = displayRisks;
+        const sg = displaySuggestions;
+
+        const lines: string[] = [
+            `# PR 审查报告：${p.title}`,
+            `**仓库**：${p.repo}`,
+            `**PR 编号**：${p.prNumber}`,
+            `**作者**：${p.author}`,
+            `**状态**：分析完成`,
+            "",
+            "## 摘要",
+            ...s,
+            "",
+            "## 风险分析",
+        ];
+
+        r.forEach((risk) => {
+            lines.push(
+                `- **${risk.label}**（${risk.title}）：${risk.description}`,
+            );
+            lines.push(`  建议：${risk.suggestion}`);
+        });
+
+        lines.push("", "## Review 建议");
+
+        sg.forEach((sgItem) => {
+            lines.push(`- **${sgItem.title}**：${sgItem.description}`);
+        });
+
+        return lines;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [analysisData, displayPrInfo, displaySummary, displayRisks, displaySuggestions]);
+
     return (
         <main className="min-h-screen bg-[#f6f8fb] text-slate-950">
             <div className="sticky top-0 z-40">
@@ -415,17 +598,22 @@ export default function ResultPage() {
                                 </Link>
 
                                 <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">
-                                    {prInfo.title}
+                                    {displayPrInfo.title}
                                 </h1>
 
                                 <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm text-slate-600">
                                     <GithubIcon className="h-4.5 w-4.5 text-slate-900" />
-                                    <span>{prInfo.repo}</span>
+                                    <span>{displayPrInfo.repo}</span>
                                     <span className="text-slate-300">·</span>
-                                    <span>{prInfo.prNumber}</span>
+                                    <span>{displayPrInfo.prNumber}</span>
                                     <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">
                                         分析完成
                                     </span>
+                                    {isMock && (
+                                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-600">
+                                            当前为 Mock API 模式
+                                        </span>
+                                    )}
                                 </div>
                             </div>
 
@@ -446,26 +634,26 @@ export default function ResultPage() {
                             <StatCard
                                 icon={<UserIcon className="h-4.5 w-4.5" />}
                                 label="作者"
-                                value={prInfo.author}
+                                value={displayPrInfo.author}
                             />
 
                             <StatCard
                                 icon={<FolderIcon className="h-4.5 w-4.5" />}
                                 label="变更文件"
-                                value={prInfo.changedFiles}
+                                value={displayPrInfo.changedFiles}
                             />
 
                             <StatCard
                                 icon={<PlusIcon className="h-4.5 w-4.5 text-emerald-600" />}
                                 label="新增"
-                                value={prInfo.additions}
+                                value={displayPrInfo.additions}
                                 valueClassName="text-emerald-600"
                             />
 
                             <StatCard
                                 icon={<MinusIcon className="h-4.5 w-4.5 text-red-500" />}
                                 label="删除"
-                                value={prInfo.deletions}
+                                value={displayPrInfo.deletions}
                                 valueClassName="text-red-500"
                             />
                         </div>
@@ -478,7 +666,7 @@ export default function ResultPage() {
                         />
 
                         <div className="space-y-2.5 text-sm leading-7 text-slate-600">
-                            {summary.map((item) => (
+                            {displaySummary.map((item) => (
                                 <p key={item}>{item}</p>
                             ))}
                         </div>
@@ -491,7 +679,7 @@ export default function ResultPage() {
                         />
 
                         <div className="grid gap-4 md:grid-cols-3">
-                            {risks.map((risk) => (
+                            {displayRisks.map((risk) => (
                                 <RiskCard key={risk.title} risk={risk} />
                             ))}
                         </div>
@@ -504,7 +692,7 @@ export default function ResultPage() {
                         />
 
                         <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white">
-                            {suggestions.map((suggestion) => (
+                            {displaySuggestions.map((suggestion) => (
                                 <div
                                     key={suggestion.title}
                                     className="flex items-center gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0"
@@ -540,19 +728,19 @@ export default function ResultPage() {
                         </div>
 
                         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                            <div className="grid grid-cols-[44px_1fr] text-xs leading-6">
-                                {markdownLines.map((line, index) => (
-                                    <div key={line} className="contents">
-                                        <div className="border-r border-slate-200 bg-white/60 px-3 text-right font-mono text-slate-400">
-                                            {index + 1}
-                                        </div>
-                                        <div className="px-4 font-mono text-slate-700">
-                                            {line}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+    <div className="grid grid-cols-[44px_1fr] text-xs leading-6">
+        {displayMarkdownLines.map((line, index) => (
+            <div key={index} className="contents">
+                <div className="border-r border-slate-200 bg-white/60 px-3 text-right font-mono text-slate-400">
+                    {index + 1}
+                </div>
+                <div className="px-4 font-mono text-slate-700">
+                    {line}
+                </div>
+            </div>
+        ))}
+    </div>
+</div>
                     </section>
                 </div>
             </section>
