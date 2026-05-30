@@ -4,90 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnalysisFloatingPanel } from "@/components/AnalysisFloatingPanel";
 import { AppHeader } from "@/components/AppHeader";
+import {
+  GithubIcon, FileIcon, FlashIcon, ShieldCheckIcon, MessageDotsIcon,
+} from "@/components/icons";
 import { analysisSteps, examplePRs, featureCards } from "@/mocks";
 import type { AnalysisStatus, AppError, FeatureCard } from "@/types";
 import { requestAnalyzePr } from "@/services/client/analyzePrClient";
 
 const SESSION_KEY = "pr-lens:last-analysis";
-
-function GitHubIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className={className}
-      fill="currentColor"
-    >
-      <path d="M12 2C6.48 2 2 6.58 2 12.24c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49 0-.24-.01-1.04-.01-1.89-2.78.62-3.37-1.21-3.37-1.21-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.36 1.12 2.93.86.09-.67.35-1.12.64-1.38-2.22-.26-4.55-1.14-4.55-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.35 9.35 0 0 1 12 6.95c.85 0 1.7.12 2.5.34 1.9-1.33 2.74-1.05 2.74-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.8-4.57 5.05.36.32.68.94.68 1.9 0 1.38-.01 2.49-.01 2.83 0 .27.18.59.69.49A10.05 10.05 0 0 0 22 12.24C22 6.58 17.52 2 12 2Z" />
-    </svg>
-  );
-}
-
-function FileIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none">
-      <path
-        d="M7 3h7l4 4v14H7V3Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M14 3v5h5M9 13h6M9 17h4"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function FlashIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none">
-      <path d="M13 2 4 14h7l-1 8 10-13h-7V2Z" fill="currentColor" />
-    </svg>
-  );
-}
-
-function ShieldIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none">
-      <path
-        d="M12 3 5 6v5.5c0 4.2 2.9 8.1 7 9.5 4.1-1.4 7-5.3 7-9.5V6l-7-3Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="m9 12 2 2 4-4"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function MessageIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none">
-      <path
-        d="M5 5h14v10H9l-4 4V5Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 10h.01M12 10h.01M15 10h.01"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 function FeatureIcon({ feature }: { feature: FeatureCard }) {
   const toneClass = {
@@ -101,8 +25,8 @@ function FeatureIcon({ feature }: { feature: FeatureCard }) {
       className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${toneClass}`}
     >
       {feature.icon === "flash" && <FlashIcon className="h-6 w-6" />}
-      {feature.icon === "shield" && <ShieldIcon className="h-6 w-6" />}
-      {feature.icon === "message" && <MessageIcon className="h-6 w-6" />}
+      {feature.icon === "shield" && <ShieldCheckIcon className="h-6 w-6" />}
+      {feature.icon === "message" && <MessageDotsIcon className="h-6 w-6" />}
     </div>
   );
 }
@@ -266,7 +190,7 @@ export default function HomePage() {
 
             <div className="mx-auto mt-8 flex max-w-4xl flex-col gap-4 md:flex-row">
               <div className="relative flex-1">
-                <GitHubIcon className="pointer-events-none absolute left-6 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                <GithubIcon className="pointer-events-none absolute left-6 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 <input
                   value={prUrl}
                   onChange={(event) => {
