@@ -202,3 +202,30 @@
 | `examplePRs` | 3 个示例 PR URL |
 | `featureCards` | 首页 3 张功能卡片 |
 | `mockChangedFiles`（route.ts 内） | 4 个文件触发 6 条规则，用于 Mock 演示规则预检查 |
+
+## 11. 错误处理与降级策略
+
+### 11.1 统一错误模型
+
+`createAppError(code, detail?)` → `AppError` 覆盖 17 种错误码，每种带：
+- `stage` — 错误阶段（validation / github / ai / report / client / unknown）
+- `action` — 用户可执行操作建议
+- `recoverable` — 是否可恢复
+
+### 11.2 降级矩阵
+
+| 场景 | HTTP | 行为 |
+|------|------|------|
+| invalid URL | 400 | 不 fallback |
+| GitHub 失败 | 200 | mock PR 兜底 + warning |
+| AI 失败 | 200 | mock Review 兜底 + warning |
+| Report 生成失败 | 200 | 简化 Markdown 兜底 + warning |
+| 前端超时 (30s) | — | 展示可重试错误 |
+| GitHub 超时 (10s) | 200 | mock 兜底 + GITHUB_TIMEOUT |
+| AI 超时 (30s) | 200 | mock 兜底 + AI_TIMEOUT |
+
+### 11.3 warnings 展示
+
+- 分析浮动面板：按错误码差异化标题 + action 建议
+- 结果页：amber 色 banner 列出所有降级提示
+- 重新分析按钮：结果页可直接重试

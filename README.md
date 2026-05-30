@@ -56,17 +56,30 @@ Copy-Item .env.example .env.local
 
 然后编辑 .env.local 填入真实的 API Key：
 
-```
+```env
 GITHUB_TOKEN=your_github_token_here
-AI_API_KEY=your_ai_api_key_here
-AI_BASE_URL=https://api.example.com
-AI_MODEL_NAME=model-name
+
+# Bailian / DashScope OpenAI-compatible API
+BAILIAN_API_KEY=
+BAILIAN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+BAILIAN_MODEL=qwen-plus
 ```
 
 3. 启动项目
 
 ```bash
+# 标准启动
 npm run dev
+
+# Windows 国内开发环境（跳过 TLS 校验 + IPv4 优先）
+npm run dev:local
+```
+
+其他命令：
+
+```bash
+npm run lint    # ESLint 检查
+npm run build   # 生产构建
 ```
 
 访问：http://localhost:3000
@@ -84,20 +97,26 @@ pr-lens/
     07-demo-script.md
     08-team-workflow.md
     09-decision-log.md
+    10-implementation-overview.md
+    11-tech-stack-and-api.md
 
   src/
     app/
       page.tsx
+      result/page.tsx
       api/analyze-pr/route.ts
 
     components/
+      result/                   ← 结果页子组件（PR10）
+
     services/
-      github/
-      review/
-      ai/
+      client/                   ← 前端请求封装
+      errors/                   ← 统一错误工厂
+      github/                   ← GitHub API 客户端
+      review/                   ← 规则检查 + 报告生成
+      ai/                       ← 百炼 AI 客户端
     mocks/
     types/
-    utils/
 
 ---
 设计说明
