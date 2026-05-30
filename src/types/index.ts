@@ -114,6 +114,7 @@ export interface AnalyzePrResponse {
   ruleCheckResults?: RuleCheckResult[];
   source?: "github" | "mock";
   warning?: string;
+  aiSource?: AiReviewSource;
 }
 
 // ============================================================
@@ -163,3 +164,39 @@ export type GitHubApiErrorCode =
   | "GITHUB_PR_NOT_FOUND"
   | "GITHUB_RATE_LIMIT"
   | "GITHUB_TOKEN_MISSING";
+
+// ============================================================
+// AI 服务类型
+// ============================================================
+
+/** AI 分析来源 */
+export type AiReviewSource = "bailian" | "mock";
+
+/** AI 分析输入 */
+export interface AiAnalysisInput {
+  pullRequest: PullRequestMeta;
+  changedFiles: ChangedFile[];
+  ruleCheckResults: RuleCheckResult[];
+}
+
+/** AI 分析结果 */
+export interface AiAnalysisResult {
+  reviewResult: ReviewResult;
+  source: AiReviewSource;
+  warning?: string;
+}
+
+/** AI Client 配置 */
+export interface AiClientConfig {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}
+
+/** AI Client 错误码 */
+export type AiClientErrorCode =
+  | "AI_TOKEN_MISSING"
+  | "AI_API_ERROR"
+  | "AI_RATE_LIMIT"
+  | "AI_TIMEOUT"
+  | "AI_INVALID_RESPONSE";
