@@ -6,14 +6,59 @@ import { useRouter } from "next/navigation";
 import { AnalysisFloatingPanel } from "@/components/AnalysisFloatingPanel";
 import { AppHeader } from "@/components/AppHeader";
 import {
-  GithubIcon, FileIcon, FlashIcon, ShieldCheckIcon, MessageDotsIcon,
+  GithubIcon,
+  FileIcon,
+  FlashIcon,
+  ShieldCheckIcon,
+  MessageDotsIcon,
 } from "@/components/icons";
 import { analysisSteps, examplePRs, featureCards } from "@/mocks";
 import type { AnalysisStatus, AppError, FeatureCard } from "@/types";
 import { requestAnalyzePr } from "@/services/client/analyzePrClient";
-import { saveHistoryEntry, buildHistoryEntry } from "@/services/storage/historyStore";
+import {
+  saveHistoryEntry,
+  buildHistoryEntry,
+} from "@/services/storage/historyStore";
 
 const SESSION_KEY = "pr-lens:last-analysis";
+
+type ReviewerPersona =
+  | "security"
+  | "performance"
+  | "testing"
+  | "maintainability";
+
+const reviewerPersonas: {
+  id: ReviewerPersona;
+  title: string;
+  description: string;
+  badge: string;
+}[] = [
+  {
+    id: "security",
+    title: "安全审查员",
+    description: "重点关注鉴权、权限、Token、敏感信息和配置泄露。",
+    badge: "Security",
+  },
+  {
+    id: "performance",
+    title: "性能审查员",
+    description: "重点关注循环、缓存、接口调用、资源释放和性能瓶颈。",
+    badge: "Performance",
+  },
+  {
+    id: "testing",
+    title: "测试审查员",
+    description: "重点关注测试缺口、边界条件、异常路径和回归风险。",
+    badge: "Testing",
+  },
+  {
+    id: "maintainability",
+    title: "可维护性审查员",
+    description: "重点关注代码结构、命名、重复逻辑和职责划分。",
+    badge: "Maintainability",
+  },
+];
 
 function FeatureIcon({ feature }: { feature: FeatureCard }) {
   const toneClass = {
@@ -39,10 +84,14 @@ export default function HomePage() {
   const [prUrl, setPrUrl] = useState("");
   const [inputError, setInputError] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
-  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
+  const [analysisStatus, setAnalysisStatus] =
+    useState<AnalysisStatus>("idle");
   const [currentStep, setCurrentStep] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [appError, setAppError] = useState<AppError | null>(null);
+
+  const [reviewerPersona, setReviewerPersona] =
+    useState<ReviewerPersona>("security");
 
   const canSubmit = useMemo(() => prUrl.trim().length > 0, [prUrl]);
 
@@ -52,7 +101,11 @@ export default function HomePage() {
 
   /* 调用 API 分析，通过 onProgress 回调接收实时进度 */
   const runAnalysis = (
-    body: { url?: string; useMock?: boolean },
+    body: {
+      url?: string;
+      useMock?: boolean;
+      reviewerPersona?: ReviewerPersona;
+    },
     inputUrlForStorage: string,
   ) => {
     const isMockCall = body.useMock === true;
@@ -69,7 +122,11 @@ export default function HomePage() {
           try {
             sessionStorage.setItem(
               SESSION_KEY,
-              JSON.stringify({ data, inputUrl: inputUrlForStorage }),
+              JSON.stringify({
+                data,
+                inputUrl: inputUrlForStorage,
+                reviewerPersona,
+              }),
             );
           } catch {
             /* sessionStorage 不可用时静默忽略 */
@@ -77,16 +134,20 @@ export default function HomePage() {
 
           setCurrentStep(6);
           setAppError(null);
-          try { saveHistoryEntry(buildHistoryEntry(inputUrlForStorage, data)); } catch {}
+
+          try {
+            saveHistoryEntry(buildHistoryEntry(inputUrlForStorage, data));
+          } catch {
+            /* 历史记录保存失败时静默忽略 */
+          }
+
           setTimeout(() => setAnalysisStatus("success"), 400);
           return;
         }
 
         setAnalysisStatus("error");
         setAppError(data.error ?? null);
-        setErrorMessage(
-          data.error?.message || "分析失败，请稍后重试",
-        );
+        setErrorMessage(data.error?.message || "分析失败，请稍后重试");
       })
       .catch(() => {
         setAnalysisStatus("error");
@@ -116,7 +177,15 @@ export default function HomePage() {
     setPrUrl(nextUrl);
     setPanelOpen(true);
     setAnalysisStatus("analyzing");
-    runAnalysis({ url: nextUrl, useMock: false }, nextUrl);
+
+    runAnalysis(
+      {
+        url: nextUrl,
+        useMock: false,
+        reviewerPersona,
+      },
+      nextUrl,
+    );
   };
 
   const handleUseExample = () => {
@@ -132,7 +201,13 @@ export default function HomePage() {
     setPanelOpen(true);
     setAnalysisStatus("analyzing");
 
-    runAnalysis({ useMock: true }, exampleUrl);
+    runAnalysis(
+      {
+        useMock: true,
+        reviewerPersona,
+      },
+      exampleUrl,
+    );
   };
 
   const handleViewResult = () => {
@@ -140,8 +215,7 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    return () => {
-    };
+    return () => {};
   }, []);
 
   return (
@@ -195,6 +269,73 @@ export default function HomePage() {
               </button>
             </div>
 
+            <div className="mx-auto mt-5 max-w-4xl text-left">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-800">
+                    选择审查角色
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    不同角色会影响 AI Review 的关注重点。
+                  </p>
+                </div>
+
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-600">
+                  Reviewer Persona
+                </span>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-4">
+                {reviewerPersonas.map((persona) => {
+                  const selected = reviewerPersona === persona.id;
+
+                  return (
+                    <button
+                      key={persona.id}
+                      type="button"
+                      onClick={() => setReviewerPersona(persona.id)}
+                      disabled={analysisStatus === "analyzing"}
+                      className={`rounded-2xl border p-4 text-left transition ${
+                        selected
+                          ? "border-blue-400 bg-blue-50 shadow-md shadow-blue-100"
+                          : "border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50"
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <h3
+                          className={`text-sm font-semibold ${
+                            selected ? "text-blue-700" : "text-slate-800"
+                          }`}
+                        >
+                          {persona.title}
+                        </h3>
+
+                        {selected && (
+                          <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                            已选择
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        {persona.description}
+                      </p>
+
+                      <div
+                        className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[10px] font-medium ${
+                          selected
+                            ? "bg-white text-blue-600"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {persona.badge}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {inputError && (
               <div className="mx-auto mt-3 max-w-4xl rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-left text-sm text-red-600">
                 {inputError}
@@ -235,8 +376,6 @@ export default function HomePage() {
                 i
               </span>
               <span>* 当前仅支持公开 GitHub PR</span>
-              <span className="text-slate-300">·</span>
-              <Link href="/history" className="text-slate-500 transition hover:text-blue-600">历史分析</Link>
             </div>
           </div>
         </div>

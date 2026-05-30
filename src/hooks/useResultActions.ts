@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type {
-  AnalyzePrResponse, DraftComment, ReviewFindingDisplay, TabKey,
+  AnalyzePrResponse, DraftComment, ReviewFindingDisplay, TabKey, ReviewerPersona,
 } from "@/types";
 import { requestAnalyzePr } from "@/services/client/analyzePrClient";
 import { SESSION_KEY } from "@/utils/result-fallbacks";
@@ -24,6 +24,7 @@ interface UseResultActionsParams {
   displayPrInfo: PrInfoDisplay;
   markdownReport: string;
   selectedDraftText: string;
+  reviewerPersona?: ReviewerPersona;
 }
 
 // ============================================================
@@ -57,6 +58,7 @@ export function useResultActions({
   displayPrInfo,
   markdownReport,
   selectedDraftText,
+  reviewerPersona,
 }: UseResultActionsParams): UseResultActionsReturn {
   const router = useRouter();
 
@@ -81,6 +83,7 @@ export function useResultActions({
       const data = await requestAnalyzePr({
         url: inputUrl,
         useMock: false,
+        reviewerPersona,
       });
 
       if (!data.success) {
@@ -91,7 +94,7 @@ export function useResultActions({
       try {
         sessionStorage.setItem(
           SESSION_KEY,
-          JSON.stringify({ data, inputUrl }),
+          JSON.stringify({ data, inputUrl, reviewerPersona }),
         );
       } catch {
         /* sessionStorage 不可用时忽略 */

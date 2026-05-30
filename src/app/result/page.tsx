@@ -34,6 +34,7 @@ export default function ResultPage() {
         displayRuleCheckResults, displayTestGaps, displayReviewOrder,
         selectedDraftText, markdownReport, displayWarnings,
         displayOverview, displayDashboard,
+        reviewerPersona,
     } = useResultData();
 
     const {
@@ -52,6 +53,7 @@ export default function ResultPage() {
         displayPrInfo,
         markdownReport,
         selectedDraftText,
+        reviewerPersona,
     });
 
     return (
@@ -84,6 +86,8 @@ export default function ResultPage() {
                                         >
                                             ← 返回首页
                                         </Link>
+                                        <span className="text-sm text-slate-300">·</span>
+                                        <Link href="/history" className="text-sm font-medium text-slate-500 transition hover:text-blue-600">分析历史</Link>
 
                                         <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">
                                             {displayPrInfo.title}
@@ -97,6 +101,23 @@ export default function ResultPage() {
                                             <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600 ring-1 ring-emerald-200">
                                                 分析完成
                                             </span>
+                                            {reviewerPersona && (
+                                                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                                                    {
+                                                        security: "bg-red-50 text-red-600 ring-red-200",
+                                                        performance: "bg-blue-50 text-blue-600 ring-blue-200",
+                                                        testing: "bg-purple-50 text-purple-600 ring-purple-200",
+                                                        maintainability: "bg-teal-50 text-teal-600 ring-teal-200",
+                                                    }[reviewerPersona]
+                                                }`}>
+                                                    {{
+                                                        security: "🛡 安全审查员",
+                                                        performance: "⚡ 性能审查员",
+                                                        testing: "🧪 测试审查员",
+                                                        maintainability: "🧩 可维护性审查员",
+                                                    }[reviewerPersona]}
+                                                </span>
+                                            )}
                                             {isMock && (
                                                 <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-600 ring-1 ring-amber-200">
                                                     当前为 Mock API 模式
