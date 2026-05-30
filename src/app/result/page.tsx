@@ -463,6 +463,9 @@ export default function ResultPage() {
     const [analysisData, setAnalysisData] =
         useState<AnalyzePrResponse | null>(null);
     const [inputUrl, setInputUrl] = useState("");
+    const [copyStatus, setCopyStatus] = useState<
+        "idle" | "success" | "error"
+    >("idle");
 
     useEffect(() => {
         const frame = requestAnimationFrame(() => {
@@ -581,6 +584,46 @@ export default function ResultPage() {
         return lines;
     }, [analysisData, displayPrInfo, displaySummary, displayRisks, displaySuggestions]);
 
+    const markdownReport = useMemo(() => {
+        return (
+            analysisData?.markdownReport ?? displayMarkdownLines.join("\n")
+        );
+    }, [analysisData, displayMarkdownLines]);
+
+    function buildReportFilename(
+        info: typeof displayPrInfo,
+    ): string {
+        const repo = info.repo.replace(/[^a-zA-Z0-9_-]+/g, "-");
+        const prNumber =
+            info.prNumber.replace(/[^0-9]+/g, "") || "unknown";
+        return `${repo}-pr-${prNumber}-review.md`;
+    }
+
+    async function handleCopyReport() {
+        try {
+            await navigator.clipboard.writeText(markdownReport);
+            setCopyStatus("success");
+            window.setTimeout(() => setCopyStatus("idle"), 1600);
+        } catch {
+            setCopyStatus("error");
+            window.setTimeout(() => setCopyStatus("idle"), 1600);
+        }
+    }
+
+    function handleDownloadReport() {
+        const blob = new Blob([markdownReport], {
+            type: "text/markdown;charset=utf-8",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = buildReportFilename(displayPrInfo);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    }
+
     return (
         <main className="min-h-screen bg-[#f6f8fb] text-slate-950">
             <div className="sticky top-0 z-40">
@@ -625,12 +668,22 @@ export default function ResultPage() {
                             </div>
 
                             <div className="flex shrink-0 items-center gap-3">
-                                <button className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600">
+                                <button
+                                    onClick={handleCopyReport}
+                                    className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
+                                >
                                     <CopyIcon className="h-4 w-4" />
-                                    复制报告
+                                    {copyStatus === "success"
+                                        ? "已复制"
+                                        : copyStatus === "error"
+                                          ? "复制失败"
+                                          : "复制报告"}
                                 </button>
 
-                                <button className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:bg-blue-700">
+                                <button
+                                    onClick={handleDownloadReport}
+                                    className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:bg-blue-700"
+                                >
                                     <DownloadIcon className="h-4 w-4" />
                                     下载报告
                                 </button>
@@ -793,15 +846,20 @@ export default function ResultPage() {
                                 title="Markdown 审查报告预览"
                             />
 
-                            <button className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600">
+                            <button
+                                onClick={handleCopyReport}
+                                className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
+                            >
                                 <CopyIcon className="h-3.5 w-3.5" />
-                                复制 Markdown
+                                {copyStatus === "success"
+                                    ? "已复制"
+                                    : "复制 Markdown"}
                             </button>
                         </div>
 
                         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
     <div className="grid grid-cols-[44px_1fr] text-xs leading-6">
-        {displayMarkdownLines.map((line, index) => (
+        {markdownReport.split("\n").map((line, index) => (
             <div key={index} className="contents">
                 <div className="border-r border-slate-200 bg-white/60 px-3 text-right font-mono text-slate-400">
                     {index + 1}
