@@ -1,0 +1,30 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./pr-lens.db"
+}
+
+model User {
+  id        String     @id @default(cuid())
+  username  String     @unique
+  password  String
+  createdAt DateTime   @default(now())
+  analyses  Analysis[]
+}
+
+model Analysis {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  repo       String
+  prNumber   String
+  prTitle    String
+  author     String
+  riskScore  Int
+  riskLevel  String
+  data       String
+  createdAt  DateTime @default(now())
+}
