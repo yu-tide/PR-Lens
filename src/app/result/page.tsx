@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AppHeader } from "@/components/AppHeader";
+import { requestAnalyzePr } from "@/services/client/analyzePrClient";
 import type { AnalyzePrResponse } from "@/types";
 
 type RiskLevel = "high" | "medium" | "low";
@@ -463,6 +465,9 @@ export default function ResultPage() {
     const [analysisData, setAnalysisData] =
         useState<AnalyzePrResponse | null>(null);
     const [inputUrl, setInputUrl] = useState("");
+    const router = useRouter();
+    const [retrying, setRetrying] = useState(false);
+    const [retryError, setRetryError] = useState("");
     const [copyStatus, setCopyStatus] = useState<
         "idle" | "success" | "error"
     >("idle");
@@ -590,6 +595,49 @@ export default function ResultPage() {
         );
     }, [analysisData, displayMarkdownLines]);
 
+    const displayWarnings = useMemo(() => {
+        return analysisData?.warnings ?? [];
+    }, [analysisData]);
+
+    async function handleRetryAnalysis() {
+        if (!inputUrl) {
+            router.push("/");
+            return;
+        }
+
+        setRetrying(true);
+        setRetryError("");
+
+        try {
+            const data = await requestAnalyzePr({
+                url: inputUrl,
+                useMock: false,
+            });
+
+            if (!data.success) {
+                setRetryError(
+                    data.error?.message ?? "重新分析失败，请稍后重试",
+                );
+                return;
+            }
+
+            try {
+                sessionStorage.setItem(
+                    SESSION_KEY,
+                    JSON.stringify({ data, inputUrl }),
+                );
+            } catch {
+                /* sessionStorage 不可用时忽略 */
+            }
+
+            setAnalysisData(data);
+        } catch {
+            setRetryError("网络异常，请稍后重试");
+        } finally {
+            setRetrying(false);
+        }
+    }
+
     function buildReportFilename(
         info: typeof displayPrInfo,
     ): string {
@@ -669,6 +717,16 @@ export default function ResultPage() {
 
                             <div className="flex shrink-0 items-center gap-3">
                                 <button
+                                    onClick={handleRetryAnalysis}
+                                    disabled={retrying}
+                                    className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600 disabled:opacity-50"
+                                >
+                                    {retrying
+                                        ? "重新分析中..."
+                                        : "重新分析"}
+                                </button>
+
+                                <button
                                     onClick={handleCopyReport}
                                     className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
                                 >
@@ -718,6 +776,35 @@ export default function ResultPage() {
                             />
                         </div>
                     </section>
+
+                    {/* Warnings banner */}
+                    {displayWarnings.length > 0 && (
+                        <section className="rounded-[28px] border border-amber-200 bg-amber-50/80 p-5 shadow-xl shadow-slate-200/70">
+                            <p className="text-sm font-semibold text-amber-800">
+                                当前结果包含降级提示
+                            </p>
+                            <ul className="mt-2 space-y-1.5">
+                                {displayWarnings.map((w, i) => (
+                                    <li key={i} className="text-sm text-amber-700">
+                                        {w.message}
+                                        {w.action && (
+                                            <span className="ml-2 text-xs text-amber-600">
+                                                — {w.action}
+                                            </span>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                        </section>
+                    )}
+
+                    {retryError && (
+                        <section className="rounded-[28px] border border-red-200 bg-red-50/80 p-4 shadow-xl shadow-slate-200/70">
+                            <p className="text-sm text-red-600">
+                                重新分析失败：{retryError}
+                            </p>
+                        </section>
+                    )}
 
                     <section className="rounded-[28px] border border-slate-200 bg-white/95 p-6 shadow-xl shadow-slate-200/70">
                         <SectionTitle

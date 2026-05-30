@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { AnalysisStatus, AnalysisStep } from "@/types";
+import type { AnalysisStatus, AnalysisStep, AppErrorCode } from "@/types";
 
 type AnalysisFloatingPanelProps = {
     open: boolean;
@@ -10,10 +10,75 @@ type AnalysisFloatingPanelProps = {
     steps: AnalysisStep[];
     prUrl: string;
     errorMessage?: string;
+    errorCode?: AppErrorCode;
+    errorAction?: string;
     onClose: () => void;
     onRetry: () => void;
     onViewResult: () => void;
 };
+
+/** 根据错误码返回用户可读标题 */
+function getErrorTitle(errorCode?: AppErrorCode): string {
+    switch (errorCode) {
+        case "INVALID_PR_URL":
+        case "EMPTY_PR_URL":
+            return "PR 链接无效";
+        case "REQUEST_INVALID_JSON":
+            return "请求格式异常";
+        case "GITHUB_PR_NOT_FOUND":
+            return "未找到该 PR";
+        case "GITHUB_RATE_LIMIT":
+            return "GitHub API 暂时限流";
+        case "GITHUB_TOKEN_MISSING":
+            return "GitHub Token 未配置";
+        case "GITHUB_TIMEOUT":
+            return "GitHub 请求超时";
+        case "AI_TOKEN_MISSING":
+            return "AI Key 未配置";
+        case "AI_TIMEOUT":
+            return "AI 分析超时";
+        case "AI_RATE_LIMIT":
+            return "AI 服务暂时限流";
+        case "AI_INVALID_RESPONSE":
+            return "AI 返回格式异常";
+        case "NETWORK_ERROR":
+            return "网络连接异常";
+        case "REPORT_BUILD_ERROR":
+            return "报告生成异常";
+        default:
+            return "分析失败";
+    }
+}
+
+/** 根据错误码返回简要说明 */
+function getErrorSubtitle(errorCode?: AppErrorCode): string {
+    const v = [
+        "INVALID_PR_URL", "EMPTY_PR_URL", "REQUEST_INVALID_JSON",
+    ] as AppErrorCode[];
+    if (errorCode && v.includes(errorCode)) {
+        return "请检查链接格式后重试";
+    }
+
+    const g: AppErrorCode[] = [
+        "GITHUB_PR_NOT_FOUND", "GITHUB_RATE_LIMIT",
+        "GITHUB_TOKEN_MISSING", "GITHUB_TIMEOUT", "GITHUB_API_ERROR",
+    ];
+    if (errorCode && g.includes(errorCode)) {
+        return "无法获取真实 GitHub 数据";
+    }
+
+    const a: AppErrorCode[] = [
+        "AI_TOKEN_MISSING", "AI_TIMEOUT", "AI_RATE_LIMIT",
+        "AI_INVALID_RESPONSE", "AI_API_ERROR",
+    ];
+    if (errorCode && a.includes(errorCode)) {
+        return "AI 分析未能完成";
+    }
+
+    if (errorCode === "NETWORK_ERROR") return "请求未能完成";
+    if (errorCode === "REPORT_BUILD_ERROR") return "分析完成但报告生成失败";
+    return "分析任务中断，请稍后重试";
+}
 
 function SpinnerIcon({ className = "" }: { className?: string }) {
     return (
@@ -107,6 +172,8 @@ export function AnalysisFloatingPanel({
     steps,
     prUrl,
     errorMessage,
+    errorCode,
+    errorAction,
     onClose,
     onRetry,
     onViewResult,
@@ -159,14 +226,14 @@ export function AnalysisFloatingPanel({
         status === "success"
             ? "分析完成"
             : status === "error"
-                ? "分析失败"
+                ? getErrorTitle(errorCode)
                 : "正在分析 PR";
 
     const subtitle =
         status === "success"
             ? "报告已生成，可以查看完整审查结果"
             : status === "error"
-                ? "分析任务中断，请检查链接或重试"
+                ? getErrorSubtitle(errorCode)
                 : currentStepItem?.title ?? "准备开始分析";
 
     const detail =
@@ -265,6 +332,11 @@ export function AnalysisFloatingPanel({
                                 <p className="mt-1 text-sm leading-6 text-slate-500">
                                     {detail}
                                 </p>
+                                {status === "error" && errorAction && (
+                                    <p className="mt-1.5 text-xs leading-5 text-red-500">
+                                        {errorAction}
+                                    </p>
+                                )}
                             </div>
                         </div>
 

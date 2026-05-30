@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { AnalysisFloatingPanel } from "@/components/AnalysisFloatingPanel";
 import { AppHeader } from "@/components/AppHeader";
 import { analysisSteps, examplePRs, featureCards } from "@/mocks";
-import type { AnalysisStatus, AnalyzePrResponse, FeatureCard } from "@/types";
+import type { AnalysisStatus, AppError, FeatureCard } from "@/types";
+import { requestAnalyzePr } from "@/services/client/analyzePrClient";
 
 const SESSION_KEY = "pr-lens:last-analysis";
 
@@ -116,6 +117,7 @@ export default function HomePage() {
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
   const [currentStep, setCurrentStep] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
+  const [appError, setAppError] = useState<AppError | null>(null);
 
   const canSubmit = useMemo(() => prUrl.trim().length > 0, [prUrl]);
 
@@ -146,16 +148,11 @@ export default function HomePage() {
       setCurrentStep(stepIndex);
     }, 760);
 
-    fetch("/api/analyze-pr", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-      .then(async (res) => {
-        const data = (await res.json()) as AnalyzePrResponse;
+    requestAnalyzePr(body)
+      .then((data) => {
         clearAnalysisTimer();
 
-        if (res.ok && data.success) {
+        if (data.success) {
           try {
             sessionStorage.setItem(
               SESSION_KEY,
@@ -166,11 +163,13 @@ export default function HomePage() {
           }
 
           setCurrentStep(analysisSteps.length);
+          setAppError(null);
           setTimeout(() => setAnalysisStatus("success"), 400);
           return;
         }
 
         setAnalysisStatus("error");
+        setAppError(data.error ?? null);
         setErrorMessage(
           data.error?.message || "分析失败，请稍后重试",
         );
@@ -178,7 +177,7 @@ export default function HomePage() {
       .catch(() => {
         clearAnalysisTimer();
         setAnalysisStatus("error");
-        setErrorMessage("分析失败，请稍后重试");
+        setErrorMessage("网络异常，请稍后重试");
       });
   };
 
@@ -188,6 +187,7 @@ export default function HomePage() {
     setInputError("");
     clearAnalysisTimer();
     setErrorMessage("");
+    setAppError(null);
 
     if (!nextUrl) {
       setInputError("请输入 GitHub Pull Request 链接。");
@@ -217,6 +217,7 @@ export default function HomePage() {
     clearAnalysisTimer();
     setInputError("");
     setErrorMessage("");
+    setAppError(null);
 
     setPrUrl(exampleUrl);
     setPanelOpen(true);
@@ -339,6 +340,8 @@ export default function HomePage() {
         steps={analysisSteps}
         prUrl={prUrl}
         errorMessage={errorMessage}
+        errorCode={appError?.code}
+        errorAction={appError?.action}
         onClose={() => setPanelOpen(false)}
         onRetry={() => startAnalyze(prUrl)}
         onViewResult={handleViewResult}
