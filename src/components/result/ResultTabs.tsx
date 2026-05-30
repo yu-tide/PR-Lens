@@ -8,10 +8,11 @@ type ResultTabsProps = {
 };
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "overview", label: "总览" },
-  { key: "rules", label: "规则检查" },
-  { key: "risks", label: "风险列表" },
-  { key: "suggestions", label: "Review 建议" },
+  { key: "order", label: "审查顺序" },
+  { key: "risk", label: "风险列表" },
+  { key: "suggestion", label: "Review 建议" },
+  { key: "testGap", label: "测试缺口" },
+  { key: "draft", label: "评论草稿" },
   { key: "markdown", label: "Markdown 报告" },
 ];
 

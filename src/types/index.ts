@@ -264,7 +264,7 @@ export interface ReportBuilderInput {
 // ============================================================
 
 /** 结果页 Tab */
-export type TabKey = "overview" | "rules" | "risks" | "suggestions" | "markdown";
+export type TabKey = "risk" | "suggestion" | "testGap" | "draft" | "order" | "markdown";
 
 /** Review Order 中的一条文件审查优先级 */
 export interface ReviewOrderItem {
@@ -283,4 +283,66 @@ export interface OverviewDisplay {
   suggestionCount: number;
   confidence: number;
   conclusion: string[];
+}
+
+/** 证据条目 */
+export interface EvidenceItem {
+  file: string;
+  line?: number;
+  code?: string;
+  reason: string;
+}
+
+/** Review 发现展示 */
+export interface ReviewFindingDisplay {
+  id: string;
+  level: "high" | "medium" | "low";
+  label: string;
+  title: string;
+  description: string;
+  suggestion: string;
+  category: string;
+  confidence: number;
+  needsHumanCheck: boolean;
+  evidence: EvidenceItem[];
+}
+
+/** 测试缺口展示 */
+export interface TestGapDisplay {
+  id: string;
+  sourceFile: string;
+  expectedTestFile: string;
+  severity: "high" | "medium" | "low";
+  reason: string;
+  suggestedTestCases: string[];
+}
+
+/** 评论草稿 */
+export interface DraftComment {
+  id: string;
+  sourceFindingId?: string;
+  title: string;
+  body: string;
+  severity: "high" | "medium" | "low";
+  selected: boolean;
+  edited: boolean;
+}
+
+/** Dashboard 汇总数据 */
+export interface DashboardData {
+  riskScore: number;
+  riskLevel: "high" | "medium" | "low";
+  highRiskCount: number;
+  mediumRiskCount: number;
+  lowRiskCount: number;
+  totalRiskCount: number;
+  suggestionCount: number;
+  testGapCount: number;
+  draftCommentCount: number;
+  evidenceCount: number;
+  changedFileCount: number;
+  additions: number;
+  deletions: number;
+  totalChanges: number;
+  confidence: number;
 }
