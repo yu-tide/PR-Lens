@@ -8,6 +8,8 @@ import {
   GitHubApiError,
 } from "@/services/github/githubClient";
 import { runRiskRules } from "@/services/review/riskRules";
+import { mergeReviewResults } from "@/services/review/mergeReviewResults";
+import { buildMarkdownReport } from "@/services/review/reportBuilder";
 import { analyzePrWithAI } from "@/services/ai/analyzePr";
 
 // ============================================================
@@ -105,11 +107,21 @@ export async function POST(request: Request) {
     );
   }
 
-  // 2. Mock 模式：无需 url，直接返回示例结果（含规则检查）
+  // 2. Mock 模式：无需 url，直接返回示例结果（含规则检查 + 报告）
   if (body.useMock === true) {
     console.log("[analyze-pr] mock mode — skipping GitHub & AI");
 
     const ruleCheckResults = runRiskRules(mockChangedFiles);
+    const mergedRisks = mergeReviewResults(mockReview, ruleCheckResults);
+    const markdownReport = buildMarkdownReport({
+      pullRequest: mockPr,
+      changedFiles: mockChangedFiles,
+      ruleCheckResults,
+      reviewResult: mockReview,
+      mergedRisks,
+      source: "mock",
+      aiSource: "mock",
+    });
 
     return NextResponse.json<AnalyzePrResponse>({
       success: true,
@@ -118,7 +130,10 @@ export async function POST(request: Request) {
       reviewResult: mockReview,
       changedFiles: mockChangedFiles,
       ruleCheckResults,
+      mergedRisks,
+      markdownReport,
       source: "mock",
+      aiSource: "mock",
     });
   }
 
@@ -211,15 +226,29 @@ export async function POST(request: Request) {
       aiWarning = `AI analysis failed, fallback to mock review: ${msg}`;
     }
 
+    const mergedRisks = mergeReviewResults(reviewResult, ruleCheckResults);
+    const markdownReport = buildMarkdownReport({
+      pullRequest: pr,
+      changedFiles,
+      ruleCheckResults,
+      reviewResult,
+      mergedRisks,
+      source: "github",
+      aiSource,
+      warning: aiWarning,
+    });
+
     console.log("[analyze-pr] [5/5] response ready");
 
     return NextResponse.json<AnalyzePrResponse>({
       success: true,
-      mode: "mock",
+      mode: "real",
       pullRequest: pr,
       reviewResult,
       changedFiles,
       ruleCheckResults,
+      mergedRisks,
+      markdownReport,
       source: "github",
       aiSource,
       warning: aiWarning,
@@ -229,6 +258,17 @@ export async function POST(request: Request) {
 
     if (error instanceof GitHubApiError) {
       const ruleCheckResults = runRiskRules(mockChangedFiles);
+      const mergedRisks = mergeReviewResults(mockReview, ruleCheckResults);
+      const markdownReport = buildMarkdownReport({
+        pullRequest: mockPr,
+        changedFiles: mockChangedFiles,
+        ruleCheckResults,
+        reviewResult: mockReview,
+        mergedRisks,
+        source: "mock",
+        aiSource: "mock",
+        warning: error.message,
+      });
 
       return NextResponse.json<AnalyzePrResponse>({
         success: true,
@@ -237,7 +277,10 @@ export async function POST(request: Request) {
         reviewResult: mockReview,
         changedFiles: mockChangedFiles,
         ruleCheckResults,
+        mergedRisks,
+        markdownReport,
         source: "mock",
+        aiSource: "mock",
         warning: error.message,
       });
     }

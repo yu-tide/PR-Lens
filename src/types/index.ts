@@ -115,6 +115,8 @@ export interface AnalyzePrResponse {
   source?: "github" | "mock";
   warning?: string;
   aiSource?: AiReviewSource;
+  markdownReport?: string;
+  mergedRisks?: MergedReviewRisk[];
 }
 
 // ============================================================
@@ -200,3 +202,30 @@ export type AiClientErrorCode =
   | "AI_RATE_LIMIT"
   | "AI_TIMEOUT"
   | "AI_INVALID_RESPONSE";
+
+// ============================================================
+// Review 合并 & Markdown 报告类型
+// ============================================================
+
+/** 风险来源 */
+export type ReviewRiskSource = "ai" | "rule" | "ai_and_rule";
+
+/** 合并后的风险（扩展 ReviewRisk） */
+export interface MergedReviewRisk extends ReviewRisk {
+  source: ReviewRiskSource;
+  ruleIds?: string[];
+  aiRiskIds?: string[];
+  ruleMessages?: string[];
+}
+
+/** Markdown 报告生成输入 */
+export interface ReportBuilderInput {
+  pullRequest: PullRequestMeta;
+  changedFiles: ChangedFile[];
+  ruleCheckResults: RuleCheckResult[];
+  reviewResult: ReviewResult;
+  mergedRisks?: MergedReviewRisk[];
+  source?: "github" | "mock";
+  aiSource?: AiReviewSource;
+  warning?: string;
+}
