@@ -8,7 +8,7 @@ import {
 import type {
   AnalyzePrResponse, AppError, DashboardData, DraftComment,
   OverviewDisplay, ReviewFindingDisplay, RuleCheckResult,
-  TabKey, TestGapDisplay,
+  TabKey, TestGapDisplay, ReviewerPersona,
 } from "@/types";
 import {
   SESSION_KEY, FALLBACK, fallbackReviewOrder,
@@ -66,6 +66,7 @@ export interface UseResultDataReturn {
   displayOverview: OverviewDisplay;
   displayDashboard: DashboardData;
   tabs: Array<{ key: TabKey; label: string; icon: ReactNode; description: string }>;
+  reviewerPersona: ReviewerPersona | undefined;
 }
 
 // ============================================================
@@ -417,6 +418,8 @@ export function useResultData(): UseResultDataReturn {
       description: "预览可复制、可下载的 Markdown 审查报告。" },
   ];
 
+  const reviewerPersona = analysisData?.reviewerPersona;
+
   return {
     analysisData, setAnalysisData, inputUrl, setInputUrl,
     showChangedFilesModal, setShowChangedFilesModal,
@@ -428,5 +431,6 @@ export function useResultData(): UseResultDataReturn {
     displayRuleCheckResults, displayTestGaps, displayReviewOrder,
     selectedDraftText, displayMarkdownLines, markdownReport,
     displayWarnings, displayOverview, displayDashboard, tabs,
+    reviewerPersona,
   };
 }

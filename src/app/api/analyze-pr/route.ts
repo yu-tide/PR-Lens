@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import type { AnalyzePrRequest, AnalyzePrResponse, AppError, AppErrorCode, ChangedFile } from "@/types";
-import { mockPr, mockReview } from "@/mocks";
+import type { AnalyzePrRequest, AnalyzePrResponse, AppError, AppErrorCode, ChangedFile, ReviewerPersona } from "@/types";
+import { mockPr, getMockReviewByPersona } from "@/mocks";
 import { parsePrUrl, ParsePrUrlError } from "@/services/github/parsePrUrl";
 import {
   getPullRequestMeta,
@@ -121,6 +121,22 @@ function buildReportSafely(params: Parameters<typeof buildMarkdownReport>[0]): {
   }
 }
 
+const VALID_PERSONAS: readonly ReviewerPersona[] = [
+  "security",
+  "performance",
+  "testing",
+  "maintainability",
+];
+
+const DEFAULT_PERSONA: ReviewerPersona = "security";
+
+function parseReviewerPersona(raw: unknown): ReviewerPersona {
+  if (typeof raw === "string" && (VALID_PERSONAS as readonly string[]).includes(raw)) {
+    return raw as ReviewerPersona;
+  }
+  return DEFAULT_PERSONA;
+}
+
 const unknownErrorResponse: AnalyzePrResponse = {
   success: false,
   mode: "mock",
@@ -143,17 +159,21 @@ export async function POST(request: Request) {
     );
   }
 
+  // 1.5 提取并校验 reviewerPersona
+  const reviewerPersona = parseReviewerPersona(body.reviewerPersona);
+
   // 2. Mock 模式：直接返回 JSON（无进度）
   if (body.useMock === true) {
-    console.log("[analyze-pr] mock mode — instant JSON");
+    console.log(`[analyze-pr] mock mode — instant JSON (persona: ${reviewerPersona})`);
 
+    const personaMockReview = getMockReviewByPersona(reviewerPersona);
     const ruleCheckResults = runRiskRules(mockChangedFiles);
     const { mergedRisks, markdownReport, warning: reportWarning } =
       buildReportSafely({
         pullRequest: mockPr,
         changedFiles: mockChangedFiles,
         ruleCheckResults,
-        reviewResult: mockReview,
+        reviewResult: personaMockReview,
         source: "mock",
         aiSource: "mock",
       });
@@ -165,7 +185,7 @@ export async function POST(request: Request) {
       success: true,
       mode: "mock",
       pullRequest: mockPr,
-      reviewResult: mockReview,
+      reviewResult: personaMockReview,
       changedFiles: mockChangedFiles,
       ruleCheckResults,
       mergedRisks,
@@ -173,6 +193,7 @@ export async function POST(request: Request) {
       source: "mock",
       aiSource: "mock",
       warnings,
+      reviewerPersona,
     });
   }
 
@@ -245,7 +266,7 @@ export async function POST(request: Request) {
         // ── Step 5: AI 分析 ──
         send({ type: "step", stepId: "ai-review", stepIndex: 4, totalSteps: TOTAL_STEPS });
 
-        let reviewResult = mockReview;
+        let reviewResult = getMockReviewByPersona(reviewerPersona);
         let aiSource: "bailian" | "mock" = "mock";
         let aiWarning: string | undefined;
         const warnings: AppError[] = [];
@@ -258,6 +279,7 @@ export async function POST(request: Request) {
             pullRequest: pr,
             changedFiles,
             ruleCheckResults,
+            reviewerPersona,
           });
           reviewResult = aiResult.reviewResult;
           aiSource = aiResult.source;
@@ -310,6 +332,7 @@ export async function POST(request: Request) {
             aiSource,
             warning: aiWarning,
             warnings: warnings.length > 0 ? warnings : undefined,
+            reviewerPersona,
           },
         });
         controller.close();
@@ -324,12 +347,13 @@ export async function POST(request: Request) {
           send({ type: "step", stepId: "report", stepIndex: 5, totalSteps: TOTAL_STEPS });
 
           const ruleCheckResults = runRiskRules(mockChangedFiles);
+          const personaFallbackReview = getMockReviewByPersona(reviewerPersona);
           const { mergedRisks, markdownReport, warning: reportWarning } =
             buildReportSafely({
               pullRequest: mockPr,
               changedFiles: mockChangedFiles,
               ruleCheckResults,
-              reviewResult: mockReview,
+              reviewResult: personaFallbackReview,
               source: "mock",
               aiSource: "mock",
               warning: error.message,
@@ -345,7 +369,7 @@ export async function POST(request: Request) {
               success: true,
               mode: "mock",
               pullRequest: mockPr,
-              reviewResult: mockReview,
+              reviewResult: personaFallbackReview,
               changedFiles: mockChangedFiles,
               ruleCheckResults,
               mergedRisks,
@@ -354,6 +378,7 @@ export async function POST(request: Request) {
               aiSource: "mock",
               warning: error.message,
               warnings: warnList,
+              reviewerPersona,
             },
           });
         } else {
