@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { AnalysisStatus, AnalysisStep, AppErrorCode } from "@/types";
 import { SpinnerIcon, CheckIcon, CloseIcon, ChevronIcon } from "@/components/icons";
 
@@ -34,12 +34,16 @@ function getErrorTitle(errorCode?: AppErrorCode): string {
             return "GitHub Token 未配置";
         case "GITHUB_TIMEOUT":
             return "GitHub 请求超时";
+        case "GITHUB_API_ERROR":
+            return "GitHub 数据获取异常";
         case "AI_TOKEN_MISSING":
             return "AI Key 未配置";
         case "AI_TIMEOUT":
             return "AI 分析超时";
         case "AI_RATE_LIMIT":
             return "AI 服务暂时限流";
+        case "AI_API_ERROR":
+            return "AI 服务异常";
         case "AI_INVALID_RESPONSE":
             return "AI 返回格式异常";
         case "NETWORK_ERROR":
@@ -114,12 +118,14 @@ export function AnalysisFloatingPanel({
 }: AnalysisFloatingPanelProps) {
     const [entered, setEntered] = useState(false);
     const [expanded, setExpanded] = useState(false);
+    const [elapsed, setElapsed] = useState(0);
 
     useEffect(() => {
         if (!open) {
             const frame = requestAnimationFrame(() => {
                 setEntered(false);
                 setExpanded(false);
+                setElapsed(0);
             });
             return () => cancelAnimationFrame(frame);
         }
@@ -131,30 +137,13 @@ export function AnalysisFloatingPanel({
         return () => cancelAnimationFrame(frame);
     }, [open]);
 
+    // 实时计时：分析中每秒递增，完成/出错时停止
     useEffect(() => {
-        if (status === "success") {
-            const frame = requestAnimationFrame(() => {
-                setExpanded(false);
-            });
-            return () => cancelAnimationFrame(frame);
-        }
-    }, [status]);
-
-    const safeStepLength = Math.max(steps.length, 1);
-    const currentStepItem = steps[currentStep];
-
-    const progress = useMemo(() => {
-        if (status === "success") return 100;
-
-        if (status === "error") {
-            return Math.max(12, Math.round((currentStep / safeStepLength) * 100));
-        }
-
-        return Math.min(
-            96,
-            Math.max(8, Math.round(((currentStep + 0.7) / safeStepLength) * 100)),
-        );
-    }, [currentStep, safeStepLength, status]);
+        if (status !== "analyzing") return;
+        setElapsed(0);
+        const timer = setInterval(() => setElapsed((n) => n + 1), 100);
+        return () => clearInterval(timer);
+    }, [status, open]);
 
     const title =
         status === "success"
@@ -168,14 +157,16 @@ export function AnalysisFloatingPanel({
             ? "报告已生成，可以查看完整审查结果"
             : status === "error"
                 ? getErrorSubtitle(errorCode)
-                : currentStepItem?.title ?? "准备开始分析";
+                : "正在调用 GitHub API + AI 分析，请稍候";
 
     const detail =
         status === "success"
             ? "已生成摘要、风险提示和 Review 建议"
             : status === "error"
                 ? errorMessage || "无法完成分析，请稍后重试"
-                : currentStepItem?.description ?? "正在准备分析任务";
+            : `正在分析 ${steps.length} 个步骤，已用时 ${(elapsed / 10).toFixed(1)}s`;
+
+    const elapsedDisplay = `${(elapsed / 10).toFixed(1)}s`;
 
     const statusDotClass =
         status === "success"
@@ -183,13 +174,6 @@ export function AnalysisFloatingPanel({
             : status === "error"
                 ? "bg-red-500"
                 : "bg-blue-500";
-
-    const progressClass =
-        status === "success"
-            ? "bg-emerald-500"
-            : status === "error"
-                ? "bg-red-500"
-                : "bg-blue-600";
 
     if (!open) return null;
 
@@ -275,36 +259,43 @@ export function AnalysisFloatingPanel({
                         </div>
 
                         <div className="mt-6">
-                            <div className="mb-2 flex items-center justify-between text-xs font-medium text-slate-500">
-                                <span>{status === "success" ? "完成进度" : "分析进度"}</span>
-                                <span>{progress}%</span>
-                            </div>
-
-                            <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-                                <div
-                                    className={`h-full rounded-full transition-all duration-700 ease-out ${progressClass}`}
-                                    style={{ width: `${progress}%` }}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="mt-4 flex items-center gap-2">
-                            {steps.map((step, index) => {
-                                const isDone = status === "success" || index < currentStep;
-                                const isCurrent = status === "analyzing" && index === currentStep;
-
-                                return (
-                                    <div
-                                        key={step.id}
-                                        className={`h-2 flex-1 rounded-full transition-all duration-500 ${isDone
-                                            ? "bg-emerald-400"
-                                            : isCurrent
-                                                ? "bg-blue-500"
-                                                : "bg-slate-200"
-                                            }`}
-                                    />
-                                );
-                            })}
+                            {status === "analyzing" ? (
+                                <>
+                                    <div className="mb-2 flex items-center justify-between text-xs font-medium text-slate-500">
+                                        <span>{currentStep > 0 ? `步骤 ${currentStep}/${steps.length}` : "已用时"}</span>
+                                        <span className="tabular-nums">{elapsedDisplay}</span>
+                                    </div>
+                                    <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                                        {currentStep > 0 ? (
+                                            <div
+                                                className="h-full rounded-full bg-blue-500 transition-all duration-700 ease-out"
+                                                style={{ width: `${Math.round((currentStep / steps.length) * 100)}%` }}
+                                            />
+                                        ) : (
+                                            <div className="h-full w-2/5 animate-shimmer rounded-full bg-gradient-to-r from-blue-400 via-blue-600 to-blue-400 bg-[length:200%_100%]" />
+                                        )}
+                                    </div>
+                                </>
+                            ) : status === "success" ? (
+                                <>
+                                    <div className="mb-2 flex items-center justify-between text-xs font-medium text-slate-500">
+                                        <span>完成</span>
+                                        <span className="tabular-nums text-emerald-600">用时 {elapsedDisplay}</span>
+                                    </div>
+                                    <div className="h-2 overflow-hidden rounded-full bg-emerald-100">
+                                        <div className="h-full w-full rounded-full bg-emerald-500" />
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="mb-2 flex items-center justify-between text-xs font-medium text-slate-500">
+                                        <span>分析中断</span>
+                                    </div>
+                                    <div className="h-2 overflow-hidden rounded-full bg-red-100">
+                                        <div className="h-full w-1/4 rounded-full bg-red-400" />
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -323,26 +314,22 @@ export function AnalysisFloatingPanel({
                         <div className="overflow-hidden">
                             <div className="mt-2 max-h-[260px] space-y-2 overflow-y-auto pr-1">
                                 {steps.map((step, index) => {
-                                    const isDone = status === "success" || index < currentStep;
+                                    const isDone = status === "success" || (status === "analyzing" && index < currentStep);
                                     const isCurrent = status === "analyzing" && index === currentStep;
 
                                     return (
                                         <div
                                             key={step.id}
-                                            className={`flex gap-3 rounded-2xl px-3.5 py-2.5 transition-colors duration-300 ${isCurrent
-                                                ? "bg-blue-50"
-                                                : isDone
-                                                    ? "bg-emerald-50/70"
-                                                    : "bg-slate-50/70"
-                                                }`}
+                                            className={`flex gap-3 rounded-2xl px-3.5 py-2.5 transition-colors duration-300 ${
+                                                isCurrent ? "bg-blue-50" : isDone ? "bg-emerald-50/70" : "bg-slate-50/70"
+                                            }`}
                                         >
                                             <div
-                                                className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors duration-300 ${isDone
-                                                    ? "bg-emerald-500 text-white"
-                                                    : isCurrent
-                                                        ? "bg-blue-600 text-white"
-                                                        : "bg-slate-200 text-slate-400"
-                                                    }`}
+                                                className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors duration-300 ${
+                                                    isDone ? "bg-emerald-500 text-white"
+                                                    : isCurrent ? "bg-blue-600 text-white"
+                                                    : "bg-slate-200 text-slate-400"
+                                                }`}
                                             >
                                                 {isDone ? (
                                                     <CheckIcon className="h-4 w-4" />
@@ -354,12 +341,9 @@ export function AnalysisFloatingPanel({
                                             </div>
 
                                             <div className="min-w-0">
-                                                <p
-                                                    className={`text-sm font-semibold ${isCurrent || isDone
-                                                        ? "text-slate-900"
-                                                        : "text-slate-500"
-                                                        }`}
-                                                >
+                                                <p className={`text-sm font-semibold ${
+                                                    isCurrent || isDone ? "text-slate-900" : "text-slate-500"
+                                                }`}>
                                                     {step.title}
                                                 </p>
                                                 <p className="mt-1 text-xs leading-5 text-slate-500">
