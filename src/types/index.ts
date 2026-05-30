@@ -258,3 +258,29 @@ export interface ReportBuilderInput {
   aiSource?: AiReviewSource;
   warning?: string;
 }
+
+// ============================================================
+// 结果页 UI 类型
+// ============================================================
+
+/** 结果页 Tab */
+export type TabKey = "overview" | "rules" | "risks" | "suggestions" | "markdown";
+
+/** Review Order 中的一条文件审查优先级 */
+export interface ReviewOrderItem {
+  file: string;
+  title: string;
+  severity: "high" | "medium" | "low";
+  description: string;
+}
+
+/** 风险评分总览 */
+export interface OverviewDisplay {
+  riskScore: number;
+  riskLevel: "high" | "medium" | "low";
+  riskLabel: string;
+  highRiskCount: number;
+  suggestionCount: number;
+  confidence: number;
+  conclusion: string[];
+}

@@ -101,12 +101,19 @@ If exceeded:
 
 ## Development Order
 
-1. Mock Flow
-2. GitHub Fetch
-3. Rule Check
-4. AI Analysis
-5. Markdown Report
-6. Error Handling
+1. Mock Flow          ✅ PR1-4
+2. GitHub Fetch       ✅ PR5
+3. Rule Check         ✅ PR6
+4. AI Analysis        ✅ PR7
+5. Markdown Report    ✅ PR8
+6. Error Handling     ✅ PR9
+
+### PR10 — Polish & Refactor
+
+- Documentation updates（README、CLAUDE.md、docs）
+- Result page component extraction（~1300 lines → 10 sub-components）
+- Stale change cleanup
+- Final lint / build stabilization
 
 ---
 

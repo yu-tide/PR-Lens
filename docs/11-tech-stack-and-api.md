@@ -249,3 +249,37 @@ src/
 | 规则检查 | AI 之前执行 | 不依赖 AI，降低漏报 |
 | diff 裁剪 | 300 行/文件 | 控制上下文大小，防超限 |
 | 网络异常 | 自动降级 mock | 保证演示稳定 |
+
+## 9. 错误响应结构
+
+```typescript
+{
+  success: false;
+  error: {
+    code: AppErrorCode;     // 17 种错误码
+    message: string;        // 用户可读信息
+    detail?: string;        // 可选详情
+    stage: AppErrorStage;   // 错误阶段
+    action: string;         // 建议操作
+    recoverable: boolean;
+  }
+}
+```
+
+## 10. 超时策略
+
+| 层级 | 超时 | 错误码 |
+|------|------|--------|
+| GitHub API | 10s | GITHUB_TIMEOUT |
+| AI API | 30s | AI_TIMEOUT |
+| 前端请求 | 30s | NETWORK_ERROR |
+
+## 11. 环境变量（最终版）
+
+```env
+GITHUB_TOKEN=your_token_here
+BAILIAN_API_KEY=your_bailian_key
+BAILIAN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+BAILIAN_MODEL=qwen-plus
+NEXT_PUBLIC_APP_NAME=PR Lens
+```
