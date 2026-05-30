@@ -77,5 +77,18 @@ export function runRiskRules(
       (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3),
   );
 
+  if (results.length > 0) {
+    const bySeverity: Record<string, number> = {};
+    for (const r of results) {
+      bySeverity[r.severity] = (bySeverity[r.severity] ?? 0) + 1;
+    }
+    const summary = Object.entries(bySeverity)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(", ");
+    console.log(`  [risk] rules done — ${results.length} hits (${summary})`);
+  } else {
+    console.log("  [risk] rules done — 0 hits");
+  }
+
   return results;
 }

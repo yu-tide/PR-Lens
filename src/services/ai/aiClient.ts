@@ -98,7 +98,10 @@ export async function callAiChatCompletion(params: {
     temperature: 0.2,
   });
 
+  console.log(`  [ai] calling ${model} @ ${baseUrl}...`);
+
   let res: Response;
+  const fetchStart = Date.now();
   try {
     res = await fetch(url, {
       method: "POST",
@@ -137,6 +140,10 @@ export async function callAiChatCompletion(params: {
   const data = (await res.json()) as OpenAiChatCompletionResponse;
 
   const content = data.choices?.[0]?.message?.content;
+
+  console.log(
+    `  [ai] response received in ${((Date.now() - fetchStart) / 1000).toFixed(1)}s`,
+  );
 
   if (!content || typeof content !== "string") {
     throw new AiClientError({

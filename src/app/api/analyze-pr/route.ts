@@ -107,6 +107,8 @@ export async function POST(request: Request) {
 
   // 2. Mock 模式：无需 url，直接返回示例结果（含规则检查）
   if (body.useMock === true) {
+    console.log("[analyze-pr] mock mode — skipping GitHub & AI");
+
     const ruleCheckResults = runRiskRules(mockChangedFiles);
 
     return NextResponse.json<AnalyzePrResponse>({
@@ -166,18 +168,31 @@ export async function POST(request: Request) {
 
   // 5. 调用真实 GitHub API；失败时 fallback 到 mock
   try {
+    console.log("[analyze-pr] [1/5] fetching GitHub data...");
+
     const [pr, changedFiles] = await Promise.all([
       getPullRequestMeta(parsed),
       getChangedFiles(parsed),
     ]);
 
+    console.log(
+      `[analyze-pr] [2/5] GitHub data OK — ${changedFiles.length} files, PR: ${pr.title}`,
+    );
+
     const ruleCheckResults = runRiskRules(changedFiles);
+
+    console.log(
+      `[analyze-pr] [3/5] rule check done — ${ruleCheckResults.length} hits`,
+    );
 
     /* 调用 AI 分析；失败时 fallback 到 mockReview */
     let reviewResult = mockReview;
     let aiSource: "bailian" | "mock" = "mock";
     let aiWarning: string | undefined;
 
+    console.log("[analyze-pr] [4/5] calling AI analysis...");
+
+    const aiStart = Date.now();
     try {
       const aiResult = await analyzePrWithAI({
         pullRequest: pr,
@@ -186,13 +201,17 @@ export async function POST(request: Request) {
       });
       reviewResult = aiResult.reviewResult;
       aiSource = aiResult.source;
+      console.log(
+        `[analyze-pr] [4/5] AI done — ${((Date.now() - aiStart) / 1000).toFixed(1)}s, ${reviewResult.risks.length} risks, ${reviewResult.suggestions.length} suggestions`,
+      );
     } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`[analyze-pr] [4/5] AI failed: ${msg}`);
       aiSource = "mock";
-      aiWarning =
-        error instanceof Error
-          ? `AI analysis failed, fallback to mock review: ${error.message}`
-          : "AI analysis failed, fallback to mock review";
+      aiWarning = `AI analysis failed, fallback to mock review: ${msg}`;
     }
+
+    console.log("[analyze-pr] [5/5] response ready");
 
     return NextResponse.json<AnalyzePrResponse>({
       success: true,
@@ -206,6 +225,8 @@ export async function POST(request: Request) {
       warning: aiWarning,
     });
   } catch (error) {
+    console.warn(`[analyze-pr] GitHub API failed: ${error instanceof Error ? error.message : String(error)}`);
+
     if (error instanceof GitHubApiError) {
       const ruleCheckResults = runRiskRules(mockChangedFiles);
 

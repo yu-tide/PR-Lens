@@ -160,6 +160,8 @@ export async function getPullRequestMeta(params: {
 
   const data = (await res.json()) as GitHubPullRequestResponse;
 
+  console.log(`  [github] PR meta fetched: ${data.title} (${owner}/${repo}#${pullNumber})`);
+
   return {
     owner,
     repo,
@@ -208,6 +210,8 @@ export async function getChangedFiles(params: {
   }
 
   const data = (await res.json()) as GitHubChangedFileResponse[];
+
+  console.log(`  [github] changed files fetched: ${data.length} files`);
 
   return data.map((file) => {
     const { patch, isBinary, isTooLarge } = normalizePatch(file.patch);
