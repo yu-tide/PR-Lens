@@ -76,6 +76,37 @@ export function getAiClientConfigFromEnv(): AiClientConfig {
 // ============================================================
 
 /**
+ * 带超时的 AI fetch 封装。
+ * AbortError 映射为 AiClientError(code: "AI_TIMEOUT")。
+ */
+async function fetchAiWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs = 30000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return res;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new AiClientError({
+        code: "AI_TIMEOUT",
+        message: "AI 分析超时，请稍后重试",
+      });
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * 调用百炼 Chat Completions API 并返回模型生成的文本内容。
  *
  * @throws AiClientError 当 API Key 缺失、请求失败或响应格式异常时
@@ -103,7 +134,7 @@ export async function callAiChatCompletion(params: {
   let res: Response;
   const fetchStart = Date.now();
   try {
-    res = await fetch(url, {
+    res = await fetchAiWithTimeout(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
