@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { AnalysisStatus, AnalysisStep, AppErrorCode } from "@/types";
+import { SpinnerIcon, CheckIcon, CloseIcon, ChevronIcon } from "@/components/icons";
 
 type AnalysisFloatingPanelProps = {
     open: boolean;
@@ -78,73 +79,6 @@ function getErrorSubtitle(errorCode?: AppErrorCode): string {
     if (errorCode === "NETWORK_ERROR") return "请求未能完成";
     if (errorCode === "REPORT_BUILD_ERROR") return "分析完成但报告生成失败";
     return "分析任务中断，请稍后重试";
-}
-
-function SpinnerIcon({ className = "" }: { className?: string }) {
-    return (
-        <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none">
-            <circle
-                cx="12"
-                cy="12"
-                r="9"
-                stroke="currentColor"
-                strokeWidth="3"
-                className="opacity-20"
-            />
-            <path
-                d="M21 12a9 9 0 0 0-9-9"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-            />
-        </svg>
-    );
-}
-
-function CheckIcon({ className = "" }: { className?: string }) {
-    return (
-        <svg viewBox="0 0 24 24" className={className} fill="none">
-            <path
-                d="m5 12 4 4 10-10"
-                stroke="currentColor"
-                strokeWidth="2.3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
-}
-
-function CloseIcon() {
-    return (
-        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
-            <path
-                d="M6 6l12 12M18 6 6 18"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-            />
-        </svg>
-    );
-}
-
-function ChevronIcon({ expanded }: { expanded: boolean }) {
-    return (
-        <svg
-            viewBox="0 0 24 24"
-            className={`h-4 w-4 transition-transform duration-300 ${expanded ? "rotate-180" : ""
-                }`}
-            fill="none"
-        >
-            <path
-                d="m6 9 6 6 6-6"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
 }
 
 function getPrLabel(prUrl: string) {
@@ -379,7 +313,7 @@ export function AnalysisFloatingPanel({
                         className="mt-5 flex w-full items-center justify-between rounded-2xl px-1 py-2 text-sm font-medium text-slate-500 transition hover:text-slate-800"
                     >
                         <span>{expanded ? "收起分析步骤" : "查看分析步骤"}</span>
-                        <ChevronIcon expanded={expanded} />
+                        <ChevronIcon className={`h-4 w-4 transition-transform duration-300 ${expanded ? "rotate-180" : ""}`} />
                     </button>
 
                     <div

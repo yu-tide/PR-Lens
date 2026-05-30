@@ -3,7 +3,8 @@ AI PR Review 助手：输入 GitHub Pull Request 链接，自动生成 PR 变更
 
 ---
 Demo
-- 在线演示：待补充
+- 项目现已部署
+  可访问链接：https://www.pr-lens.xyz
 - Demo 视频：待补充
 
 ---
