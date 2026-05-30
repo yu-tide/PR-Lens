@@ -80,6 +80,13 @@ export interface ParsedPullRequestUrl {
   url: string;
 }
 
+/** 审查角色 */
+export type ReviewerPersona =
+  | "security"
+  | "performance"
+  | "testing"
+  | "maintainability";
+
 /** 分析模式 */
 export type AnalyzeMode = "real" | "mock";
 
@@ -128,6 +135,7 @@ export interface AppError {
 export interface AnalyzePrRequest {
   url?: string;
   useMock?: boolean;
+  reviewerPersona?: ReviewerPersona;
 }
 
 /** POST /api/analyze-pr 响应 */
@@ -145,6 +153,7 @@ export interface AnalyzePrResponse {
   markdownReport?: string;
   mergedRisks?: MergedReviewRisk[];
   warnings?: AppError[];
+  reviewerPersona?: ReviewerPersona;
 }
 
 // ============================================================
@@ -208,6 +217,7 @@ export interface AiAnalysisInput {
   pullRequest: PullRequestMeta;
   changedFiles: ChangedFile[];
   ruleCheckResults: RuleCheckResult[];
+  reviewerPersona?: ReviewerPersona;
 }
 
 /** AI 分析结果 */
