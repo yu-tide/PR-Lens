@@ -465,19 +465,23 @@ export default function ResultPage() {
     const [inputUrl, setInputUrl] = useState("");
 
     useEffect(() => {
-        try {
-            const raw = sessionStorage.getItem(SESSION_KEY);
-            if (!raw) return;
+        const frame = requestAnimationFrame(() => {
+            try {
+                const raw = sessionStorage.getItem(SESSION_KEY);
+                if (!raw) return;
 
-            const parsed = JSON.parse(raw);
+                const parsed = JSON.parse(raw);
 
-            if (parsed?.data) {
-                setAnalysisData(parsed.data as AnalyzePrResponse);
-                setInputUrl(parsed.inputUrl ?? "");
+                if (parsed?.data) {
+                    setAnalysisData(parsed.data as AnalyzePrResponse);
+                    setInputUrl(parsed.inputUrl ?? "");
+                }
+            } catch {
+                /* JSON 解析失败 → 静默走 FALLBACK */
             }
-        } catch {
-            /* JSON 解析失败 → 静默走 FALLBACK */
-        }
+        });
+
+        return () => cancelAnimationFrame(frame);
     }, []);
 
     const isMock = analysisData?.mode === "mock";
@@ -536,6 +540,10 @@ export default function ResultPage() {
         }));
     }, [analysisData]);
 
+    const displayRuleCheckResults = useMemo(() => {
+        return analysisData?.ruleCheckResults ?? [];
+    }, [analysisData]);
+
     const displayMarkdownLines = useMemo(() => {
         if (!analysisData?.reviewResult) return FALLBACK.markdownLines;
 
@@ -571,7 +579,6 @@ export default function ResultPage() {
         });
 
         return lines;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [analysisData, displayPrInfo, displaySummary, displayRisks, displaySuggestions]);
 
     return (
@@ -657,6 +664,71 @@ export default function ResultPage() {
                                 valueClassName="text-red-500"
                             />
                         </div>
+                    </section>
+
+                    <section className="rounded-[28px] border border-slate-200 bg-white/95 p-6 shadow-xl shadow-slate-200/70">
+                        <SectionTitle
+                            icon={<ShieldIcon className="h-4.5 w-4.5" />}
+                            title="规则预检查"
+                        />
+
+                        {displayRuleCheckResults.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-5 py-4 text-center text-sm text-slate-500">
+                                未发现需要重点关注的基础规则风险
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {displayRuleCheckResults.map((rule) => {
+                                    const severityStyle = {
+                                        high: "border-red-200 bg-red-50/60",
+                                        medium: "border-amber-200 bg-amber-50/60",
+                                        low: "border-emerald-200 bg-emerald-50/60",
+                                    }[rule.severity] ?? "border-slate-200 bg-slate-50/60";
+
+                                    const badgeStyle = {
+                                        high: "bg-red-100 text-red-700",
+                                        medium: "bg-amber-100 text-amber-700",
+                                        low: "bg-emerald-100 text-emerald-700",
+                                    }[rule.severity] ?? "bg-slate-100 text-slate-600";
+
+                                    const severityLabel = {
+                                        high: "高风险",
+                                        medium: "中风险",
+                                        low: "低风险",
+                                    }[rule.severity] ?? rule.severity;
+
+                                    return (
+                                        <article
+                                            key={rule.id}
+                                            className={`rounded-2xl border p-4 ${severityStyle}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <span
+                                                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${badgeStyle}`}
+                                                >
+                                                    {severityLabel}
+                                                </span>
+                                                <h3 className="text-sm font-semibold text-slate-950">
+                                                    {rule.title}
+                                                </h3>
+                                            </div>
+
+                                            <p className="mt-2 text-sm leading-6 text-slate-600">
+                                                {rule.message}
+                                            </p>
+
+                                            {(rule.file || rule.line) && (
+                                                <p className="mt-1.5 text-xs text-slate-400">
+                                                    {rule.file ?? ""}
+                                                    {rule.file && rule.line ? " · " : ""}
+                                                    {rule.line ? `第 ${rule.line} 行` : ""}
+                                                </p>
+                                            )}
+                                        </article>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </section>
 
                     <section className="rounded-[28px] border border-slate-200 bg-white/95 p-6 shadow-xl shadow-slate-200/70">
