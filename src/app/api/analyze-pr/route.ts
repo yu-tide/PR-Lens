@@ -8,6 +8,7 @@ import {
   GitHubApiError,
 } from "@/services/github/githubClient";
 import { runRiskRules } from "@/services/review/riskRules";
+import { analyzePrWithAI } from "@/services/ai/analyzePr";
 
 // ============================================================
 // POST /api/analyze-pr
@@ -172,14 +173,37 @@ export async function POST(request: Request) {
 
     const ruleCheckResults = runRiskRules(changedFiles);
 
+    /* 调用 AI 分析；失败时 fallback 到 mockReview */
+    let reviewResult = mockReview;
+    let aiSource: "bailian" | "mock" = "mock";
+    let aiWarning: string | undefined;
+
+    try {
+      const aiResult = await analyzePrWithAI({
+        pullRequest: pr,
+        changedFiles,
+        ruleCheckResults,
+      });
+      reviewResult = aiResult.reviewResult;
+      aiSource = aiResult.source;
+    } catch (error) {
+      aiSource = "mock";
+      aiWarning =
+        error instanceof Error
+          ? `AI analysis failed, fallback to mock review: ${error.message}`
+          : "AI analysis failed, fallback to mock review";
+    }
+
     return NextResponse.json<AnalyzePrResponse>({
       success: true,
       mode: "mock",
       pullRequest: pr,
-      reviewResult: mockReview,
+      reviewResult,
       changedFiles,
       ruleCheckResults,
       source: "github",
+      aiSource,
+      warning: aiWarning,
     });
   } catch (error) {
     if (error instanceof GitHubApiError) {
