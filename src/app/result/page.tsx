@@ -8,22 +8,27 @@ import { AppHeader } from "@/components/AppHeader";
 import {
   GithubIcon, CopyIcon, DownloadIcon, UserIcon, FolderIcon,
   PlusIcon, MinusIcon, SparkIcon, ShieldIcon, MessageIcon,
-  FileIcon, BeakerIcon, ChartIcon, CloseIcon, CheckIcon,
+  FileIcon, BeakerIcon, CheckIcon,
 } from "@/components/icons";
-import { ConfidenceBar } from "@/components/result/ConfidenceBar";
-import { PriorityBadge } from "@/components/result/PriorityBadge";
 import { ChangedFilesModal } from "@/components/result/ChangedFilesModal";
-import { DashboardTooltip } from "@/components/result/DashboardTooltip";
+import { PriorityBadge } from "@/components/result/PriorityBadge";
 import { ResultDashboard } from "@/components/result/ResultDashboard";
 import { RiskCard } from "@/components/result/RiskCard";
-import { SectionTitle } from "@/components/result/SectionTitle";
 import { StatCard } from "@/components/result/StatCard";
 import { SuggestionIcon } from "@/components/result/SuggestionIcon";
+import { SummaryCard } from "@/components/result/SummaryCard";
 import { TabTooltip } from "@/components/result/TabTooltip";
 import { requestAnalyzePr } from "@/services/client/analyzePrClient";
+import {
+  extractPrNumber, mapRiskLevel, mapCategoryToIcon, getRiskLabel,
+  getRiskScoreLevel, normalizeRiskLevel, calculateRiskScore,
+  parseSignedDisplayNumber, readNumberField, normalizePercent,
+  readChangedFilesFromResponse, buildFallbackEvidence,
+  getConfidenceByLevel, buildTestGaps,
+} from "@/utils/review-helpers";
 import type {
-  AnalyzePrResponse, DashboardData, DraftComment, EvidenceItem,
-  OverviewDisplay, ReviewFindingDisplay, TabKey, TestGapDisplay,
+  AnalyzePrResponse, DashboardData, DraftComment,
+  OverviewDisplay, ReviewFindingDisplay, TabKey,
 } from "@/types";
 
 type RiskLevel = "high" | "medium" | "low";
@@ -50,20 +55,6 @@ const prInfo = {
     deletions: "-97",
 };
 
-const fallbackChangedFileList = [
-    "src/server/api/rate-limit.ts",
-    "src/config/rate-limit.ts",
-    "src/middleware/rate-limit.ts",
-    "src/utils/redis-client.ts",
-    "src/types/rate-limit.ts",
-    "src/server/api/route-handler.ts",
-    "tests/rate-limit.test.ts",
-    "tests/rate-limit-config.test.ts",
-    "docs/api-rate-limit.md",
-    "package.json",
-    "pnpm-lock.yaml",
-    "README.md",
-];
 
 const summary = [
     "本次 PR 为 Next.js 添加了 API 路由限流能力，提供了灵活的限流配置与多种应用方式。",
@@ -176,264 +167,6 @@ type ReviewOrderItem = {
     description: string;
 };
 
-function extractPrNumber(url: string): string {
-    try {
-        const match = url.match(/github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/);
-        if (match?.[1]) return `#${match[1]}`;
-    } catch {
-        /* 解析失败 */
-    }
-
-    return "#57855";
-}
-
-function mapRiskLevel(level: string): {
-    level: RiskLevel;
-    label: string;
-} {
-    switch (level) {
-        case "HIGH":
-            return { level: "high", label: "高风险" };
-        case "MEDIUM":
-            return { level: "medium", label: "中风险" };
-        case "LOW":
-            return { level: "low", label: "低风险" };
-        default:
-            return { level: "low", label: "未知风险" };
-    }
-}
-
-function mapCategoryToIcon(category: string): string {
-    switch (category) {
-        case "Correctness":
-            return "beaker";
-        case "Security":
-            return "chart";
-        case "Maintainability":
-            return "settings";
-        case "Testing":
-            return "beaker";
-        case "Documentation":
-            return "doc";
-        default:
-            return "doc";
-    }
-}
-
-function normalizeRiskLevel(level: string): RiskLevel {
-    if (level === "high" || level === "HIGH") return "high";
-    if (level === "medium" || level === "MEDIUM") return "medium";
-    return "low";
-}
-
-function getRiskLabel(level: RiskLevel): string {
-    if (level === "high") return "高风险";
-    if (level === "medium") return "中风险";
-    return "低风险";
-}
-
-function getRiskScoreLevel(score: number): RiskLevel {
-    if (score >= 70) return "high";
-    if (score >= 40) return "medium";
-    return "low";
-}
-
-function calculateRiskScore(items: RiskDisplay[]): number {
-    if (items.length === 0) return 18;
-
-    const base = items.reduce((total, item) => {
-        if (item.level === "high") return total + 100;
-        if (item.level === "medium") return total + 62;
-        return total + 28;
-    }, 0);
-
-    const highCount = items.filter((item) => item.level === "high").length;
-    const boost = Math.min(highCount * 6, 18);
-    const score = Math.round(base / items.length + boost);
-
-    return Math.min(100, Math.max(0, score));
-}
-
-function parseSignedDisplayNumber(value: string): number {
-    const parsed = Number(value.replace(/[^0-9-]+/g, ""));
-    return Number.isFinite(parsed) ? parsed : 0;
-}
-
-
-function readNumberField(source: unknown, keys: string[]): number | null {
-    if (!source || typeof source !== "object") return null;
-
-    const record = source as Record<string, unknown>;
-
-    for (const key of keys) {
-        const value = record[key];
-
-        if (typeof value === "number" && Number.isFinite(value)) {
-            return value;
-        }
-
-        if (typeof value === "string" && value.trim() !== "") {
-            const parsed = Number(value);
-            if (Number.isFinite(parsed)) return parsed;
-        }
-    }
-
-    return null;
-}
-
-function normalizePercent(value: number): number {
-    const percent = value <= 1 ? value * 100 : value;
-    return Math.min(100, Math.max(0, Math.round(percent)));
-}
-
-function readChangedFilesFromResponse(data: AnalyzePrResponse | null): string[] {
-    if (!data || typeof data !== "object") return fallbackChangedFileList;
-
-    const dataRecord = data as unknown as Record<string, unknown>;
-    const pullRequest = dataRecord.pullRequest;
-
-    if (!pullRequest || typeof pullRequest !== "object") {
-        return fallbackChangedFileList;
-    }
-
-    const prRecord = pullRequest as Record<string, unknown>;
-
-    const possibleFields = [
-        prRecord.files,
-        prRecord.changedFileList,
-        prRecord.changedFilesList,
-        prRecord.changedFiles,
-    ];
-
-    for (const field of possibleFields) {
-        if (Array.isArray(field)) {
-            const fileList = field
-                .map((item) => {
-                    if (typeof item === "string") return item;
-
-                    if (item && typeof item === "object") {
-                        const itemRecord = item as Record<string, unknown>;
-                        const filename =
-                            itemRecord.filename ??
-                            itemRecord.file ??
-                            itemRecord.path ??
-                            itemRecord.name;
-
-                        if (typeof filename === "string") return filename;
-                    }
-
-                    return null;
-                })
-                .filter((item): item is string => Boolean(item));
-
-            if (fileList.length > 0) {
-                return Array.from(new Set(fileList));
-            }
-        }
-    }
-
-    return fallbackChangedFileList;
-}
-
-function buildFallbackEvidence(index: number): EvidenceItem[] {
-    const evidencePool: EvidenceItem[][] = [
-        [
-            {
-                file: "src/server/api/rate-limit.ts",
-                line: 42,
-                code: "await redis.incr(key)",
-                reason: "核心请求路径中引入 Redis 调用，高并发下可能增加接口延迟。",
-            },
-            {
-                file: "src/utils/redis-client.ts",
-                line: 18,
-                code: "createRedisClient(config.redisUrl)",
-                reason: "Redis 客户端可用性会直接影响限流判断结果。",
-            },
-        ],
-        [
-            {
-                file: "src/config/rate-limit.ts",
-                line: 24,
-                code: "windowMs: 60_000",
-                reason: "限流窗口与阈值配置会直接影响线上用户请求体验。",
-            },
-            {
-                file: "src/types/rate-limit.ts",
-                line: 9,
-                code: "maxRequests?: number",
-                reason: "可选配置需要明确默认值与边界校验策略。",
-            },
-        ],
-        [
-            {
-                file: "src/middleware/rate-limit.ts",
-                line: 31,
-                code: "response.headers.set('X-RateLimit-Remaining', remaining)",
-                reason: "响应头依赖客户端或代理正确透传，存在兼容性差异。",
-            },
-        ],
-    ];
-
-    return evidencePool[index % evidencePool.length];
-}
-
-function getConfidenceByLevel(level: RiskLevel, index: number): number {
-    if (level === "high") return Math.max(82, 91 - index * 3);
-    if (level === "medium") return Math.max(72, 84 - index * 3);
-    return Math.max(62, 76 - index * 2);
-}
-
-function buildTestGaps(files: string[]): TestGapDisplay[] {
-    const testFiles = files.filter((file) =>
-        /(\.test\.|\.spec\.|__tests__|\/tests?\/)/i.test(file),
-    );
-
-    const sourceFiles = files.filter((file) =>
-        /\.(ts|tsx|js|jsx)$/.test(file) &&
-        !/(\.test\.|\.spec\.|__tests__|\/tests?\/)/i.test(file),
-    );
-
-    const importantSourceFiles = sourceFiles.filter((file) =>
-        /api|server|middleware|config|auth|rate-limit|redis|route/i.test(file),
-    );
-
-    const targetFiles = importantSourceFiles.length > 0 ? importantSourceFiles : sourceFiles;
-
-    return targetFiles.slice(0, 4).map((file, index) => {
-        const hasRelatedTest = testFiles.some((testFile) => {
-            const sourceBaseName = file
-                .split("/")
-                .pop()
-                ?.replace(/\.(ts|tsx|js|jsx)$/i, "")
-                .replace(/[-_.]?client$/i, "");
-
-            if (!sourceBaseName) return false;
-
-            return testFile.toLowerCase().includes(sourceBaseName.toLowerCase());
-        });
-
-        const severity: RiskLevel = hasRelatedTest ? "low" : index <= 1 ? "medium" : "low";
-
-        return {
-            id: `test-gap-${index}`,
-            sourceFile: file,
-            expectedTestFile: file
-                .replace(/^src\//, "tests/")
-                .replace(/\.(ts|tsx|js|jsx)$/i, ".test.ts"),
-            severity,
-            reason: hasRelatedTest
-                ? "已检测到相关测试文件，但仍建议确认是否覆盖异常路径、边界值与高并发场景。"
-                : "该 PR 修改了核心逻辑文件，但未明显检测到一一对应的测试文件变更。",
-            suggestedTestCases: [
-                "补充正常路径测试，确认限流未触发时请求可以正常通过。",
-                "补充超限路径测试，确认状态码、错误信息与响应头符合预期。",
-                "补充 Redis 失败或超时场景，确认系统具备合理降级策略。",
-                "补充边界值测试，例如窗口期边界、阈值为 0 或极大值的情况。",
-            ],
-        };
-    });
-}
 
 const FALLBACK = {
     prInfo,
@@ -442,254 +175,6 @@ const FALLBACK = {
     suggestions,
     markdownLines,
 };
-
-function SummaryCard({ summary }: { summary: string[] }) {
-    const summaryText = summary.join("\n\n");
-
-    return (
-        <section className={`${PAGE_CARD_CLASS} group relative mt-auto flex min-h-[210px] flex-1 flex-col p-5`}>
-            <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600 shadow-sm">
-                        <SparkIcon className="h-4.5 w-4.5" />
-                    </span>
-                    <div>
-                        <h2 className="text-base font-semibold tracking-tight text-slate-950">
-                            结论摘要
-                        </h2>
-                        <p className="mt-0.5 text-xs text-slate-400">
-                            悬停查看完整内容
-                        </p>
-                    </div>
-                </div>
-
-                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600 ring-1 ring-blue-100">
-                    完整摘要
-                </span>
-            </div>
-
-            <div className="mt-5 flex min-h-0 flex-1 items-start">
-                <p className="line-clamp-5 min-h-[120px] max-h-[120px] text-sm leading-6 text-slate-600">
-                    {summaryText}
-                </p>
-            </div>
-
-            <div className="pointer-events-none absolute left-0 bottom-[calc(100%+12px)] z-50 hidden w-full rounded-[24px] border border-blue-100 bg-white p-4 text-sm leading-6 text-slate-700 shadow-[0_22px_60px_rgba(15,23,42,0.22)] ring-1 ring-blue-50 group-hover:block">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                    <p className="font-semibold text-slate-950">完整结论摘要</p>
-                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600 ring-1 ring-blue-100">
-                        悬停预览
-                    </span>
-                </div>
-                <p className="whitespace-pre-line">{summaryText}</p>
-            </div>
-        </section>
-    );
-}
-
-function RiskDonutChart_legacy({
-    data,
-    onClick,
-}: {
-    data: DashboardData;
-    onClick: () => void;
-}) {
-    const total = data.totalRiskCount;
-    const highDeg = total > 0 ? (data.highRiskCount / total) * 360 : 0;
-    const mediumDeg = total > 0 ? (data.mediumRiskCount / total) * 360 : 0;
-    const chartBackground = total > 0
-        ? `conic-gradient(#ef4444 0deg ${highDeg}deg, #f59e0b ${highDeg}deg ${highDeg + mediumDeg}deg, #10b981 ${highDeg + mediumDeg}deg 360deg)`
-        : "conic-gradient(#e2e8f0 0deg 360deg)";
-
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            className="group relative z-0 flex min-h-[76px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-left shadow-inner transition hover:z-30 hover:border-blue-300 hover:bg-blue-50/70 hover:shadow-[0_10px_24px_rgba(37,99,235,0.12)] focus-visible:z-30"
-        >
-            <div
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full p-1.5 shadow-sm"
-                style={{ background: chartBackground }}
-            >
-                <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white text-center shadow-inner">
-                    <span className="text-sm font-bold text-slate-950">{total}</span>
-                    <span className="text-[8px] font-semibold text-slate-400">风险项</span>
-                </div>
-            </div>
-
-            <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-slate-700">风险构成</p>
-                <p className="mt-1 text-[11px] leading-4 text-slate-500">
-                    高 {data.highRiskCount} · 中 {data.mediumRiskCount} · 低 {data.lowRiskCount}
-                </p>
-                <p className="mt-0.5 text-[10px] font-medium text-blue-600">
-                    点击查看风险分析
-                </p>
-            </div>
-
-            <DashboardTooltip placement="top">
-                风险构成：高风险 {data.highRiskCount} 项，中风险 {data.mediumRiskCount} 项，低风险 {data.lowRiskCount} 项。点击查看风险分析。
-            </DashboardTooltip>
-        </button>
-    );
-}
-
-function ChangeBarChart_legacy({
-    additions,
-    deletions,
-    changedFileCount,
-    totalChanges,
-    onClick,
-}: {
-    additions: number;
-    deletions: number;
-    changedFileCount: number;
-    totalChanges: number;
-    onClick: () => void;
-}) {
-    const max = Math.max(additions, deletions, 1);
-    const additionPercent = Math.max(8, Math.round((additions / max) * 100));
-    const deletionPercent = Math.max(8, Math.round((deletions / max) * 100));
-
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            className="group relative z-0 flex min-h-[76px] flex-col justify-center rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-left shadow-inner transition hover:z-30 hover:border-blue-300 hover:bg-blue-50/70 hover:shadow-[0_10px_24px_rgba(37,99,235,0.12)] focus-visible:z-30"
-        >
-            <div className="flex items-center justify-between gap-3">
-                <div>
-                    <p className="text-xs font-semibold text-slate-700">代码变更</p>
-                    <p className="mt-0.5 text-[11px] text-slate-400">
-                        {changedFileCount} 个文件 · 共 {totalChanges} 行
-                    </p>
-                </div>
-                <ChartIcon className="h-4.5 w-4.5 text-blue-500" />
-            </div>
-
-            <div className="mt-1.5 space-y-1">
-                <div>
-                    <div className="mb-0.5 flex justify-between text-[11px] font-semibold text-emerald-600">
-                        <span>新增</span>
-                        <span>+{additions}</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-emerald-100">
-                        <div
-                            className="h-full rounded-full bg-emerald-500"
-                            style={{ width: `${additionPercent}%` }}
-                        />
-                    </div>
-                </div>
-
-                <div>
-                    <div className="mb-0.5 flex justify-between text-[11px] font-semibold text-red-500">
-                        <span>删除</span>
-                        <span>-{deletions}</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-red-100">
-                        <div
-                            className="h-full rounded-full bg-red-500"
-                            style={{ width: `${deletionPercent}%` }}
-                        />
-                    </div>
-                </div>
-            </div>
-
-            <DashboardTooltip placement="top">
-                代码变更规模：{changedFileCount} 个文件，新增 {additions} 行，删除 {deletions} 行。点击查看智能审查顺序。
-            </DashboardTooltip>
-        </button>
-    );
-}
-
-function RiskCard_Legacy({
-    risk,
-    onAddToDraft,
-}: {
-    risk: ReviewFindingDisplay;
-    onAddToDraft: (finding: ReviewFindingDisplay) => void;
-}) {
-    const styles = {
-        high: {
-            card: "border-red-300 bg-red-50 shadow-red-100/80",
-            badge: "bg-red-100 text-red-700 ring-red-200",
-        },
-        medium: {
-            card: "border-amber-300 bg-amber-50 shadow-amber-100/80",
-            badge: "bg-amber-100 text-amber-700 ring-amber-200",
-        },
-        low: {
-            card: "border-emerald-300 bg-emerald-50 shadow-emerald-100/80",
-            badge: "bg-emerald-100 text-emerald-700 ring-emerald-200",
-        },
-    }[risk.level];
-
-    return (
-        <article className={`rounded-2xl border p-4 shadow-md ${styles.card}`}>
-            <div className="flex flex-wrap items-center gap-3">
-                <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ring-1 ${styles.badge}`}>
-                    {risk.label}
-                </span>
-                <h3 className="text-sm font-semibold text-slate-950">
-                    {risk.title}
-                </h3>
-            </div>
-
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-                {risk.description}
-            </p>
-
-            <p className="mt-2 text-sm font-medium leading-6 text-slate-700">
-                {risk.suggestion}
-            </p>
-
-            <div className="mt-4 rounded-2xl border border-white/70 bg-white/70 p-3 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-slate-700">
-                        Evidence & Confidence
-                    </p>
-                    <ConfidenceBar value={risk.confidence} />
-                </div>
-
-                <div className="mt-3 space-y-2">
-                    {risk.evidence.map((item, index) => (
-                        <div
-                            key={`${item.file}-${item.line}-${index}`}
-                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
-                        >
-                            <p className="break-all font-mono text-xs font-medium text-slate-700">
-                                {item.file}
-                                {item.line ? ` · 第 ${item.line} 行` : ""}
-                            </p>
-                            {item.code && (
-                                <p className="mt-1 break-all rounded-lg bg-slate-900 px-2 py-1 font-mono text-xs text-slate-100">
-                                    {item.code}
-                                </p>
-                            )}
-                            <p className="mt-1 text-xs leading-5 text-slate-500">
-                                {item.reason}
-                            </p>
-                        </div>
-                    ))}
-                </div>
-
-                {risk.needsHumanCheck && (
-                    <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
-                        需要人工确认：该建议依赖上下文判断，合并前建议 reviewer 复核。
-                    </p>
-                )}
-
-                <button
-                    type="button"
-                    onClick={() => onAddToDraft(risk)}
-                    className="mt-3 inline-flex h-9 items-center justify-center rounded-xl bg-slate-950 px-3.5 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
-                >
-                    加入草稿箱
-                </button>
-            </div>
-        </article>
-    );
-}
 
 export default function ResultPage() {
     const [analysisData, setAnalysisData] = useState<AnalyzePrResponse | null>(null);
@@ -831,10 +316,11 @@ export default function ResultPage() {
     }, [displayRuleCheckResults]);
 
     useEffect(() => {
-        setDraftComments((prev) => {
-            if (prev.length > 0) return prev;
+        const frame = requestAnimationFrame(() => {
+            setDraftComments((prev) => {
+                if (prev.length > 0) return prev;
 
-            return displayReviewFindings.slice(0, 2).map((finding) => ({
+                return displayReviewFindings.slice(0, 2).map((finding) => ({
                 id: `draft-${finding.id}`,
                 sourceFindingId: finding.id,
                 title: finding.title,
@@ -843,7 +329,9 @@ export default function ResultPage() {
                 edited: false,
                 body: `**${finding.title}**\n\n${finding.description}\n\n建议：${finding.suggestion}\n\n证据：${finding.evidence[0]?.file ?? "暂无"}${finding.evidence[0]?.line ? ` · 第 ${finding.evidence[0].line} 行` : ""}\n\n置信度：${finding.confidence}%`,
             }));
+            });
         });
+        return () => cancelAnimationFrame(frame);
     }, [displayReviewFindings]);
 
     const selectedDraftText = useMemo(() => {
