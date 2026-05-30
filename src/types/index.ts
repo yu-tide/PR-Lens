@@ -86,8 +86,33 @@ export type AnalyzeMode = "real" | "mock";
 /** 应用层错误码 */
 export type AppErrorCode =
   | "INVALID_PR_URL"
+  | "EMPTY_PR_URL"
+  | "REQUEST_INVALID_JSON"
+  | "GITHUB_TOKEN_MISSING"
+  | "GITHUB_PR_NOT_FOUND"
+  | "GITHUB_RATE_LIMIT"
+  | "GITHUB_API_ERROR"
+  | "GITHUB_TIMEOUT"
+  | "AI_TOKEN_MISSING"
+  | "AI_API_ERROR"
+  | "AI_RATE_LIMIT"
+  | "AI_TIMEOUT"
+  | "AI_INVALID_RESPONSE"
+  | "REPORT_BUILD_ERROR"
+  | "NETWORK_ERROR"
   | "MOCK_MODE"
   | "UNKNOWN_ERROR";
+
+/** 错误发生阶段 */
+export type AppErrorStage =
+  | "request"
+  | "validation"
+  | "github"
+  | "rule_check"
+  | "ai"
+  | "report"
+  | "client"
+  | "unknown";
 
 /** 应用层错误 */
 export interface AppError {
@@ -95,6 +120,8 @@ export interface AppError {
   message: string;
   detail?: string;
   recoverable: boolean;
+  stage?: AppErrorStage;
+  action?: string;
 }
 
 /** POST /api/analyze-pr 请求 */
@@ -117,6 +144,7 @@ export interface AnalyzePrResponse {
   aiSource?: AiReviewSource;
   markdownReport?: string;
   mergedRisks?: MergedReviewRisk[];
+  warnings?: AppError[];
 }
 
 // ============================================================
@@ -165,7 +193,8 @@ export type GitHubApiErrorCode =
   | "GITHUB_API_ERROR"
   | "GITHUB_PR_NOT_FOUND"
   | "GITHUB_RATE_LIMIT"
-  | "GITHUB_TOKEN_MISSING";
+  | "GITHUB_TOKEN_MISSING"
+  | "GITHUB_TIMEOUT";
 
 // ============================================================
 // AI 服务类型

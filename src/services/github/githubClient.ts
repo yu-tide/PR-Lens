@@ -64,6 +64,37 @@ export class GitHubApiError extends Error {
 const API_BASE = "https://api.github.com";
 
 /**
+ * 带超时的 fetch 封装。
+ * AbortError 会映射为 GitHubApiError(code: "GITHUB_TIMEOUT")。
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs = 10000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return res;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new GitHubApiError({
+        code: "GITHUB_TIMEOUT",
+        message: "GitHub API 请求超时，请稍后重试",
+      });
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * 组装通用请求头
  */
 function buildHeaders(): HeadersInit {
@@ -145,8 +176,9 @@ export async function getPullRequestMeta(params: {
 
   let res: Response;
   try {
-    res = await fetch(url, { headers });
+    res = await fetchWithTimeout(url, { headers });
   } catch (err) {
+    if (err instanceof GitHubApiError) throw err;
     const detail = err instanceof Error ? err.message : String(err);
     throw new GitHubApiError({
       code: "GITHUB_API_ERROR",
@@ -196,8 +228,9 @@ export async function getChangedFiles(params: {
 
   let res: Response;
   try {
-    res = await fetch(url, { headers });
+    res = await fetchWithTimeout(url, { headers });
   } catch (err) {
+    if (err instanceof GitHubApiError) throw err;
     const detail = err instanceof Error ? err.message : String(err);
     throw new GitHubApiError({
       code: "GITHUB_API_ERROR",

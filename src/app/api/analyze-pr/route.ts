@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { AnalyzePrRequest, AnalyzePrResponse, ChangedFile } from "@/types";
+import type { AnalyzePrRequest, AnalyzePrResponse, AppError, AppErrorCode, ChangedFile } from "@/types";
 import { mockPr, mockReview } from "@/mocks";
 import { parsePrUrl, ParsePrUrlError } from "@/services/github/parsePrUrl";
 import {
@@ -11,10 +11,12 @@ import { runRiskRules } from "@/services/review/riskRules";
 import { mergeReviewResults } from "@/services/review/mergeReviewResults";
 import { buildMarkdownReport } from "@/services/review/reportBuilder";
 import { analyzePrWithAI } from "@/services/ai/analyzePr";
+import { AiClientError } from "@/services/ai/aiClient";
+import { createAppError } from "@/services/errors/appErrors";
 
 // ============================================================
 // POST /api/analyze-pr
-// PR6: 接入规则预检查
+// PR9: 全链路错误处理
 // ============================================================
 
 /** Mock 变更文件（用于 Mock 模式和 GitHub API fallback 时演示规则命中） */
@@ -69,15 +71,32 @@ const mockChangedFiles: ChangedFile[] = [
   },
 ];
 
+/** 安全生成报告（失败不抛错） */
+function buildReportSafely(params: Parameters<typeof buildMarkdownReport>[0]): {
+  markdownReport: string;
+  mergedRisks: typeof params.mergedRisks;
+  warning?: ReturnType<typeof createAppError>;
+} {
+  const mergedRisks = mergeReviewResults(params.reviewResult, params.ruleCheckResults);
+  try {
+    const markdownReport = buildMarkdownReport({ ...params, mergedRisks });
+    return { markdownReport, mergedRisks };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      markdownReport:
+        "# PR Review 报告\n\n报告生成失败，请查看页面结构化分析结果。\n",
+      mergedRisks,
+      warning: createAppError("REPORT_BUILD_ERROR", msg),
+    };
+  }
+}
+
 /** 500 响应 */
 const unknownErrorResponse: AnalyzePrResponse = {
   success: false,
   mode: "mock",
-  error: {
-    code: "UNKNOWN_ERROR",
-    message: "服务器内部错误，请稍后重试",
-    recoverable: false,
-  },
+  error: createAppError("UNKNOWN_ERROR"),
 };
 
 /**
@@ -97,11 +116,7 @@ export async function POST(request: Request) {
       {
         success: false,
         mode: "mock",
-        error: {
-          code: "UNKNOWN_ERROR",
-          message: "请求格式无效，请发送 JSON 格式的请求体",
-          recoverable: true,
-        },
+        error: createAppError("REQUEST_INVALID_JSON"),
       },
       { status: 400 },
     );
@@ -112,16 +127,18 @@ export async function POST(request: Request) {
     console.log("[analyze-pr] mock mode — skipping GitHub & AI");
 
     const ruleCheckResults = runRiskRules(mockChangedFiles);
-    const mergedRisks = mergeReviewResults(mockReview, ruleCheckResults);
-    const markdownReport = buildMarkdownReport({
-      pullRequest: mockPr,
-      changedFiles: mockChangedFiles,
-      ruleCheckResults,
-      reviewResult: mockReview,
-      mergedRisks,
-      source: "mock",
-      aiSource: "mock",
-    });
+    const { mergedRisks, markdownReport, warning: reportWarning } =
+      buildReportSafely({
+        pullRequest: mockPr,
+        changedFiles: mockChangedFiles,
+        ruleCheckResults,
+        reviewResult: mockReview,
+        source: "mock",
+        aiSource: "mock",
+      });
+
+    const warnings = [createAppError("MOCK_MODE")];
+    if (reportWarning) warnings.push(reportWarning);
 
     return NextResponse.json<AnalyzePrResponse>({
       success: true,
@@ -134,6 +151,7 @@ export async function POST(request: Request) {
       markdownReport,
       source: "mock",
       aiSource: "mock",
+      warnings,
     });
   }
 
@@ -143,13 +161,7 @@ export async function POST(request: Request) {
       {
         success: false,
         mode: "mock",
-        error: {
-          code: "INVALID_PR_URL",
-          message: "请输入有效的 GitHub PR 链接",
-          detail:
-            "在非 Mock 模式下必须提供 PR 链接，或使用 useMock=true 进入示例模式",
-          recoverable: true,
-        },
+        error: createAppError("EMPTY_PR_URL"),
       },
       { status: 400 },
     );
@@ -166,11 +178,7 @@ export async function POST(request: Request) {
         {
           success: false,
           mode: "mock",
-          error: {
-            code: "INVALID_PR_URL",
-            message: error.message,
-            recoverable: true,
-          },
+          error: createAppError("INVALID_PR_URL", error.message),
         },
         { status: 400 },
       );
@@ -204,6 +212,7 @@ export async function POST(request: Request) {
     let reviewResult = mockReview;
     let aiSource: "bailian" | "mock" = "mock";
     let aiWarning: string | undefined;
+    const warnings: AppError[] = [];
 
     console.log("[analyze-pr] [4/5] calling AI analysis...");
 
@@ -224,19 +233,26 @@ export async function POST(request: Request) {
       console.warn(`[analyze-pr] [4/5] AI failed: ${msg}`);
       aiSource = "mock";
       aiWarning = `AI analysis failed, fallback to mock review: ${msg}`;
+
+      if (error instanceof AiClientError) {
+        warnings.push(createAppError(error.code as AppErrorCode, msg));
+      } else {
+        warnings.push(createAppError("AI_API_ERROR", msg));
+      }
     }
 
-    const mergedRisks = mergeReviewResults(reviewResult, ruleCheckResults);
-    const markdownReport = buildMarkdownReport({
-      pullRequest: pr,
-      changedFiles,
-      ruleCheckResults,
-      reviewResult,
-      mergedRisks,
-      source: "github",
-      aiSource,
-      warning: aiWarning,
-    });
+    const { mergedRisks, markdownReport, warning: reportWarning } =
+      buildReportSafely({
+        pullRequest: pr,
+        changedFiles,
+        ruleCheckResults,
+        reviewResult,
+        source: "github",
+        aiSource,
+        warning: aiWarning,
+      });
+
+    if (reportWarning) warnings.push(reportWarning);
 
     console.log("[analyze-pr] [5/5] response ready");
 
@@ -252,23 +268,30 @@ export async function POST(request: Request) {
       source: "github",
       aiSource,
       warning: aiWarning,
+      warnings: warnings.length > 0 ? warnings : undefined,
     });
   } catch (error) {
     console.warn(`[analyze-pr] GitHub API failed: ${error instanceof Error ? error.message : String(error)}`);
 
     if (error instanceof GitHubApiError) {
       const ruleCheckResults = runRiskRules(mockChangedFiles);
-      const mergedRisks = mergeReviewResults(mockReview, ruleCheckResults);
-      const markdownReport = buildMarkdownReport({
-        pullRequest: mockPr,
-        changedFiles: mockChangedFiles,
-        ruleCheckResults,
-        reviewResult: mockReview,
-        mergedRisks,
-        source: "mock",
-        aiSource: "mock",
-        warning: error.message,
-      });
+      const { mergedRisks, markdownReport, warning: reportWarning } =
+        buildReportSafely({
+          pullRequest: mockPr,
+          changedFiles: mockChangedFiles,
+          ruleCheckResults,
+          reviewResult: mockReview,
+          source: "mock",
+          aiSource: "mock",
+          warning: error.message,
+        });
+
+      const ghAppError = createAppError(
+        error.code as AppErrorCode,
+        error.message,
+      );
+      const warnList = [ghAppError];
+      if (reportWarning) warnList.push(reportWarning);
 
       return NextResponse.json<AnalyzePrResponse>({
         success: true,
@@ -282,6 +305,7 @@ export async function POST(request: Request) {
         source: "mock",
         aiSource: "mock",
         warning: error.message,
+        warnings: warnList,
       });
     }
 
