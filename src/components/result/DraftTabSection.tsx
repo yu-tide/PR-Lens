@@ -1,0 +1,101 @@
+"use client";
+
+import type { DraftComment } from "@/types";
+import { PriorityBadge } from "@/components/result/PriorityBadge";
+import { CheckIcon, CopyIcon } from "@/components/icons";
+import { getRiskLabel } from "@/utils/review-helpers";
+import { SUBTLE_PANEL_CLASS } from "@/utils/result-fallbacks";
+
+type DraftTabSectionProps = {
+  draftComments: DraftComment[];
+  draftCopyStatus: "idle" | "success" | "error";
+  onToggleDraft: (id: string) => void;
+  onDeleteDraft: (id: string) => void;
+  onUpdateDraftBody: (id: string, body: string) => void;
+  onCopyDraft: () => void;
+};
+
+export function DraftTabSection({
+  draftComments, draftCopyStatus,
+  onToggleDraft, onDeleteDraft, onUpdateDraftBody, onCopyDraft,
+}: DraftTabSectionProps) {
+  if (draftComments.length === 0) {
+    return (
+      <section className="flex h-full min-h-0 flex-col overflow-hidden">
+        <div className={`${SUBTLE_PANEL_CLASS} px-5 py-8 text-center`}>
+          <p className="text-sm font-medium text-slate-600">暂无评论草稿</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            可从风险卡片中点击"加入草稿箱"。
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1 pb-3">
+        {draftComments.map((draft) => (
+          <article
+            key={draft.id}
+            className="rounded-2xl border border-slate-300 bg-white p-3.5 shadow-[0_8px_22px_rgba(15,23,42,0.07)]"
+          >
+            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onToggleDraft(draft.id)}
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border shadow-sm transition ${
+                    draft.selected
+                      ? "border-blue-300 bg-blue-50 text-blue-600"
+                      : "border-slate-300 bg-white text-slate-300"
+                  }`}
+                >
+                  {draft.selected && <CheckIcon className="h-4 w-4" />}
+                </button>
+                <PriorityBadge level={draft.severity} label={getRiskLabel(draft.severity)} />
+                <p className="min-w-0 max-w-[560px] truncate text-sm font-semibold text-slate-950">
+                  {draft.title}
+                </p>
+                {draft.edited && (
+                  <span className="rounded-lg bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-600 ring-1 ring-indigo-200">
+                    已编辑
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => onDeleteDraft(draft.id)}
+                className="inline-flex h-8 shrink-0 items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-600 transition hover:bg-red-100"
+              >
+                删除
+              </button>
+            </div>
+            <textarea
+              value={draft.body}
+              onChange={(event) => onUpdateDraftBody(draft.id, event.target.value)}
+              className="h-[112px] min-h-[96px] w-full resize-y rounded-2xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 font-mono text-sm leading-6 text-slate-700 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-100"
+            />
+          </article>
+        ))}
+      </div>
+      <div className="shrink-0 flex items-center justify-between gap-3 border-t border-slate-200 bg-white/95 pt-3 backdrop-blur">
+        <p className="text-xs font-medium text-slate-500">
+          已选择 {draftComments.filter((item) => item.selected).length} 条评论草稿
+        </p>
+        <button
+          type="button"
+          onClick={onCopyDraft}
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.22)] transition hover:-translate-y-0.5 hover:bg-slate-800"
+        >
+          <CopyIcon className="h-4 w-4" />
+          {draftCopyStatus === "success"
+            ? "已复制草稿"
+            : draftCopyStatus === "error"
+              ? "复制失败"
+              : "复制选中草稿"}
+        </button>
+      </div>
+    </section>
+  );
+}
