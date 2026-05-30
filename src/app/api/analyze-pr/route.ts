@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { AnalyzePrRequest, AnalyzePrResponse } from "@/types";
+import type { AnalyzePrRequest, AnalyzePrResponse, ChangedFile } from "@/types";
 import { mockPr, mockReview } from "@/mocks";
 import { parsePrUrl, ParsePrUrlError } from "@/services/github/parsePrUrl";
 import {
@@ -7,11 +7,64 @@ import {
   getChangedFiles,
   GitHubApiError,
 } from "@/services/github/githubClient";
+import { runRiskRules } from "@/services/review/riskRules";
 
 // ============================================================
 // POST /api/analyze-pr
-// PR5: 接入真实 GitHub API，失败时 fallback 到 mock
+// PR6: 接入规则预检查
 // ============================================================
+
+/** Mock 变更文件（用于 Mock 模式和 GitHub API fallback 时演示规则命中） */
+const mockChangedFiles: ChangedFile[] = [
+  {
+    filename: "src/services/auth/session.ts",
+    status: "modified",
+    additions: 12,
+    deletions: 3,
+    changes: 15,
+    patch: '+import { getSessionToken } from "./token";\n+const token = getSessionToken();\n+await fetch("/api/validate", { headers: { Authorization: `Bearer ${token}` } });',
+    rawUrl: "",
+    blobUrl: "",
+    isBinary: false,
+    isTooLarge: false,
+  },
+  {
+    filename: "src/config/app.config.ts",
+    status: "modified",
+    additions: 5,
+    deletions: 2,
+    changes: 7,
+    patch: "+export const apiConfig = {\n+  baseUrl: process.env.SECRET_API_URL,\n+};",
+    rawUrl: "",
+    blobUrl: "",
+    isBinary: false,
+    isTooLarge: false,
+  },
+  {
+    filename: "package.json",
+    status: "modified",
+    additions: 1,
+    deletions: 1,
+    changes: 2,
+    patch: '-    "next": "14.0.0",\n+    "next": "16.2.6",',
+    rawUrl: "",
+    blobUrl: "",
+    isBinary: false,
+    isTooLarge: false,
+  },
+  {
+    filename: "src/utils/helpers.ts",
+    status: "modified",
+    additions: 2,
+    deletions: 91,
+    changes: 93,
+    patch: "+// Rewritten helpers\n+export const format = (x: string) => x.trim();\n" + "-".repeat(91),
+    rawUrl: "",
+    blobUrl: "",
+    isBinary: false,
+    isTooLarge: false,
+  },
+];
 
 /** 500 响应 */
 const unknownErrorResponse: AnalyzePrResponse = {
@@ -51,13 +104,18 @@ export async function POST(request: Request) {
     );
   }
 
-  // 2. Mock 模式：无需 url，直接返回示例结果
+  // 2. Mock 模式：无需 url，直接返回示例结果（含规则检查）
   if (body.useMock === true) {
+    const ruleCheckResults = runRiskRules(mockChangedFiles);
+
     return NextResponse.json<AnalyzePrResponse>({
       success: true,
       mode: "mock",
       pullRequest: mockPr,
       reviewResult: mockReview,
+      changedFiles: mockChangedFiles,
+      ruleCheckResults,
+      source: "mock",
     });
   }
 
@@ -112,22 +170,28 @@ export async function POST(request: Request) {
       getChangedFiles(parsed),
     ]);
 
+    const ruleCheckResults = runRiskRules(changedFiles);
+
     return NextResponse.json<AnalyzePrResponse>({
       success: true,
       mode: "mock",
       pullRequest: pr,
       reviewResult: mockReview,
       changedFiles,
-      ruleCheckResults: [],
+      ruleCheckResults,
       source: "github",
     });
   } catch (error) {
     if (error instanceof GitHubApiError) {
+      const ruleCheckResults = runRiskRules(mockChangedFiles);
+
       return NextResponse.json<AnalyzePrResponse>({
         success: true,
         mode: "mock",
         pullRequest: mockPr,
         reviewResult: mockReview,
+        changedFiles: mockChangedFiles,
+        ruleCheckResults,
         source: "mock",
         warning: error.message,
       });
