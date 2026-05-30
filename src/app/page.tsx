@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnalysisFloatingPanel } from "@/components/AnalysisFloatingPanel";
 import { AppHeader } from "@/components/AppHeader";
@@ -10,6 +11,7 @@ import {
 import { analysisSteps, examplePRs, featureCards } from "@/mocks";
 import type { AnalysisStatus, AppError, FeatureCard } from "@/types";
 import { requestAnalyzePr } from "@/services/client/analyzePrClient";
+import { saveHistoryEntry, buildHistoryEntry } from "@/services/storage/historyStore";
 
 const SESSION_KEY = "pr-lens:last-analysis";
 
@@ -33,7 +35,6 @@ function FeatureIcon({ feature }: { feature: FeatureCard }) {
 
 export default function HomePage() {
   const router = useRouter();
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [prUrl, setPrUrl] = useState("");
   const [inputError, setInputError] = useState("");
@@ -49,33 +50,21 @@ export default function HomePage() {
     return /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+\/?$/.test(url);
   };
 
-  const clearAnalysisTimer = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  /* 共享分析流程：启动视觉进度动画 + 调用 API */
+  /* 调用 API 分析，通过 onProgress 回调接收实时进度 */
   const runAnalysis = (
     body: { url?: string; useMock?: boolean },
     inputUrlForStorage: string,
   ) => {
-    /* 视觉进度动画（不决定最终结果，API 响应是唯一权威） */
-    let stepIndex = 0;
-    timerRef.current = setInterval(() => {
-      stepIndex += 1;
-      if (stepIndex >= analysisSteps.length) {
-        clearAnalysisTimer();
-        return;
-      }
-      setCurrentStep(stepIndex);
-    }, 760);
+    const isMockCall = body.useMock === true;
 
-    requestAnalyzePr(body)
+    requestAnalyzePr(
+      body,
+      isMockCall ? 30000 : 60000,
+      isMockCall
+        ? undefined
+        : (step) => setCurrentStep(step.stepIndex),
+    )
       .then((data) => {
-        clearAnalysisTimer();
-
         if (data.success) {
           try {
             sessionStorage.setItem(
@@ -86,8 +75,9 @@ export default function HomePage() {
             /* sessionStorage 不可用时静默忽略 */
           }
 
-          setCurrentStep(analysisSteps.length);
+          setCurrentStep(6);
           setAppError(null);
+          try { saveHistoryEntry(buildHistoryEntry(inputUrlForStorage, data)); } catch {}
           setTimeout(() => setAnalysisStatus("success"), 400);
           return;
         }
@@ -99,7 +89,6 @@ export default function HomePage() {
         );
       })
       .catch(() => {
-        clearAnalysisTimer();
         setAnalysisStatus("error");
         setErrorMessage("网络异常，请稍后重试");
       });
@@ -109,7 +98,6 @@ export default function HomePage() {
     const nextUrl = targetUrl ?? prUrl.trim();
 
     setInputError("");
-    clearAnalysisTimer();
     setErrorMessage("");
     setAppError(null);
 
@@ -128,8 +116,6 @@ export default function HomePage() {
     setPrUrl(nextUrl);
     setPanelOpen(true);
     setAnalysisStatus("analyzing");
-    setCurrentStep(0);
-
     runAnalysis({ url: nextUrl, useMock: false }, nextUrl);
   };
 
@@ -138,7 +124,6 @@ export default function HomePage() {
 
     if (!exampleUrl) return;
 
-    clearAnalysisTimer();
     setInputError("");
     setErrorMessage("");
     setAppError(null);
@@ -146,7 +131,6 @@ export default function HomePage() {
     setPrUrl(exampleUrl);
     setPanelOpen(true);
     setAnalysisStatus("analyzing");
-    setCurrentStep(0);
 
     runAnalysis({ useMock: true }, exampleUrl);
   };
@@ -157,7 +141,6 @@ export default function HomePage() {
 
   useEffect(() => {
     return () => {
-      clearAnalysisTimer();
     };
   }, []);
 
@@ -252,6 +235,8 @@ export default function HomePage() {
                 i
               </span>
               <span>* 当前仅支持公开 GitHub PR</span>
+              <span className="text-slate-300">·</span>
+              <Link href="/history" className="text-slate-500 transition hover:text-blue-600">历史分析</Link>
             </div>
           </div>
         </div>
