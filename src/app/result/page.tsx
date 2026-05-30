@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import {
   GithubIcon, CopyIcon, DownloadIcon, UserIcon, FolderIcon,
@@ -23,6 +25,16 @@ import { useResultData } from "@/hooks/useResultData";
 import { useResultActions } from "@/hooks/useResultActions";
 
 export default function ResultPage() {
+    const router = useRouter();
+    const [user, setUser] = useState<{ id: string; username: string } | null | undefined>(undefined);
+
+    useEffect(() => {
+        fetch("/api/auth/me")
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => setUser(data?.user ?? null))
+            .catch(() => setUser(null));
+    }, []);
+
     const {
         setAnalysisData, inputUrl,
         showChangedFilesModal, setShowChangedFilesModal,
@@ -80,14 +92,18 @@ export default function ResultPage() {
                             <section className={`${PAGE_CARD_CLASS} shrink-0`}>
                                 <div className="flex flex-col gap-5">
                                     <div>
-                                        <Link
-                                            href="/"
+                                        <button
+                                            onClick={() => router.back()}
                                             className="text-sm font-medium text-slate-500 transition hover:text-blue-600"
                                         >
-                                            ← 返回首页
-                                        </Link>
-                                        <span className="text-sm text-slate-300">·</span>
-                                        <Link href="/history" className="text-sm font-medium text-slate-500 transition hover:text-blue-600">分析历史</Link>
+                                            ← 返回上一页
+                                        </button>
+                                        {user && (
+                                            <>
+                                                <span className="text-sm text-slate-300">·</span>
+                                                <Link href="/history" className="text-sm font-medium text-slate-500 transition hover:text-blue-600">分析历史</Link>
+                                            </>
+                                        )}
 
                                         <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">
                                             {displayPrInfo.title}

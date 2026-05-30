@@ -15,10 +15,6 @@ import {
 import { analysisSteps, examplePRs, featureCards } from "@/mocks";
 import type { AnalysisStatus, AppError, FeatureCard } from "@/types";
 import { requestAnalyzePr } from "@/services/client/analyzePrClient";
-import {
-  saveHistoryEntry,
-  buildHistoryEntry,
-} from "@/services/storage/historyStore";
 
 const SESSION_KEY = "pr-lens:last-analysis";
 
@@ -92,6 +88,14 @@ export default function HomePage() {
 
   const [reviewerPersona, setReviewerPersona] =
     useState<ReviewerPersona>("security");
+  const [user, setUser] = useState<{ id: string; username: string } | null | undefined>(undefined);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setUser(data?.user ?? null))
+      .catch(() => setUser(null));
+  }, []);
 
   const canSubmit = useMemo(() => prUrl.trim().length > 0, [prUrl]);
 
@@ -136,10 +140,12 @@ export default function HomePage() {
           setAppError(null);
 
           try {
-            saveHistoryEntry(buildHistoryEntry(inputUrlForStorage, data));
-          } catch {
-            /* 历史记录保存失败时静默忽略 */
-          }
+            fetch("/api/history", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prUrl: inputUrlForStorage, response: data }),
+            });
+          } catch { /* 静默忽略 */ }
 
           setTimeout(() => setAnalysisStatus("success"), 400);
           return;
@@ -376,6 +382,13 @@ export default function HomePage() {
                 i
               </span>
               <span>* 当前仅支持公开 GitHub PR</span>
+              {user === null && (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <Link href="/login" className="text-blue-600 hover:underline">登录</Link>
+                  <span className="text-slate-500">后可查看历史分析记录</span>
+                </>
+              )}
             </div>
           </div>
         </div>
