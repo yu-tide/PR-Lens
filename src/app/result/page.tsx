@@ -14,7 +14,7 @@ import { MarkdownTabSection } from "@/components/result/MarkdownTabSection";
 import { OrderTabSection } from "@/components/result/OrderTabSection";
 import { ResultDashboard } from "@/components/result/ResultDashboard";
 import { ResultTabs } from "@/components/result/ResultTabs";
-import { RiskTabSection } from "@/components/result/RiskTabSection";
+import { RiskWorkstation } from "@/components/result/RiskWorkstation";
 import { StatCard } from "@/components/result/StatCard";
 import { SuggestionTabSection } from "@/components/result/SuggestionTabSection";
 import { SummaryCard } from "@/components/result/SummaryCard";
@@ -87,8 +87,8 @@ export default function ResultPage() {
                 <div className="pointer-events-none absolute right-[-150px] top-24 h-3 w-48 rotate-[-30deg] rounded-full bg-slate-200/60" />
 
                 <div className="relative grid min-h-0 w-full gap-6 xl:grid-cols-[430px_minmax(0,1fr)]">
-                    <aside className="min-h-0 overflow-hidden">
-                        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
+                    <aside className="min-h-0 overflow-visible">
+                        <div className="flex h-full min-h-0 flex-col gap-4 overflow-visible">
                             <section className={`${PAGE_CARD_CLASS} shrink-0`}>
                                 <div className="flex flex-col gap-5">
                                     <div>
@@ -177,6 +177,12 @@ export default function ResultPage() {
                                             icon={<UserIcon className="h-4.5 w-4.5" />}
                                             label="作者"
                                             value={displayPrInfo.author}
+                                            hint="点击访问 GitHub 主页"
+                                            onClick={
+                                                displayPrInfo.author
+                                                    ? () => window.open(`https://github.com/${displayPrInfo.author}`, "_blank", "noopener,noreferrer")
+                                                    : undefined
+                                            }
                                         />
 
                                         <StatCard
@@ -240,7 +246,13 @@ export default function ResultPage() {
 
                                 <div className="min-h-0 flex-1 overflow-hidden p-4 overscroll-contain">
                                     {activeTab === "risk" && (
-                                        <RiskTabSection findings={displayReviewFindings} onAddToDraft={handleAddFindingToDraft} />
+                                        displayReviewFindings.length > 0 ? (
+                                            <RiskWorkstation findings={displayReviewFindings} onAddToDraft={handleAddFindingToDraft} />
+                                        ) : (
+                                            <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                                                暂无风险发现
+                                            </div>
+                                        )
                                     )}
 
                                     {activeTab === "suggestion" && (
