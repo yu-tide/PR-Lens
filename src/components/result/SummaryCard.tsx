@@ -19,11 +19,26 @@ export function SummaryCard({ summary }: SummaryCardProps) {
           </div>
         </div>
       </div>
-      <div className="mt-4 space-y-2 text-sm leading-7 text-slate-600">
-        {summary.map((item) => (
-          <p key={item}>{item}</p>
+
+      {/* 默认：固定展示五行 */}
+      <div className="mt-4 line-clamp-5 text-sm leading-7 text-slate-600">
+        {summary.map((item, index) => (
+          <span key={index}>
+            {index > 0 && " "}
+            {item}
+          </span>
         ))}
       </div>
+
+      {/* 悬停：完整摘要浮层 */}
+      <div className="pointer-events-none absolute left-0 bottom-full z-50 mb-3 w-[420px] max-h-[320px] overflow-auto rounded-[24px] border border-blue-100 bg-white p-5 text-sm leading-7 text-slate-700 shadow-[0_24px_70px_rgba(15,23,42,0.20)] ring-1 ring-blue-50 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100">
+        {summary.map((item, index) => (
+          <p key={index} className="mb-2 last:mb-0">
+            {item}
+          </p>
+        ))}
+      </div>
+
       <div className="pointer-events-none absolute -right-12 -top-10 h-36 w-36 rounded-full bg-blue-50 blur-2xl" />
     </section>
   );
