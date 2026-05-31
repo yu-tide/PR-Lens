@@ -26,6 +26,16 @@ export interface ReviewResult {
   summary: string;
   risks: ReviewRisk[];
   suggestions: ReviewSuggestion[];
+  testGaps?: AiTestGap[];
+}
+
+export interface AiTestGap {
+  id: string;
+  sourceFile: string;
+  expectedTestFile?: string;
+  severity: "high" | "medium" | "low";
+  reason: string;
+  suggestedTestCases: string[];
 }
 
 export interface PullRequestMeta {

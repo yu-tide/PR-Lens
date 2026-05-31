@@ -21,7 +21,7 @@ import {
   getRiskScoreLevel, normalizeRiskLevel, calculateRiskScore, calculateAnchoredRiskScore,
   parseSignedDisplayNumber, readNumberField, normalizePercent,
   readChangedFilesFromResponse, buildFallbackEvidence,
-  getConfidenceByLevel, buildTestGaps,
+  getConfidenceByLevel, buildDraftCommentBody, buildTestGaps,
 } from "@/utils/review-helpers";
 
 // ============================================================
@@ -188,9 +188,23 @@ export function useResultData(): UseResultDataReturn {
   }, [analysisData]);
 
   // ── Derived: test gaps ─────────────────────────────────
+  // 优先使用 AI 返回的测试缺口，没有时 fallback 到规则函数
   const displayTestGaps = useMemo(() => {
+    const aiTestGaps = analysisData?.reviewResult?.testGaps;
+    if (aiTestGaps && aiTestGaps.length > 0) {
+      return aiTestGaps.map((g): TestGapDisplay => ({
+        id: g.id,
+        sourceFile: g.sourceFile,
+        expectedTestFile: g.expectedTestFile ?? g.sourceFile
+          .replace(/^src\//, "tests/")
+          .replace(/\.(ts|tsx|js|jsx)$/i, ".test.ts"),
+        severity: g.severity,
+        reason: g.reason,
+        suggestedTestCases: g.suggestedTestCases,
+      }));
+    }
     return buildTestGaps(displayChangedFiles);
-  }, [displayChangedFiles]);
+  }, [analysisData, displayChangedFiles]);
 
   // ── Derived: review order ──────────────────────────────
   const displayReviewOrder: ReviewOrderItem[] = useMemo(() => {
@@ -217,7 +231,7 @@ export function useResultData(): UseResultDataReturn {
           severity: finding.level,
           selected: true,
           edited: false,
-          body: `**${finding.title}**\n\n${finding.description}\n\n建议：${finding.suggestion}\n\n证据：${finding.evidence[0]?.file ?? "暂无"}${finding.evidence[0]?.line ? ` · 第 ${finding.evidence[0].line} 行` : ""}\n\n置信度：${finding.confidence}%`,
+          body: buildDraftCommentBody(finding),
         }));
       });
     });
