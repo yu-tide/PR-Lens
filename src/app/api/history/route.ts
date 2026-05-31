@@ -15,7 +15,7 @@ export async function GET() {
   });
 
   return NextResponse.json({
-    entries: entries.map((e) => ({
+    entries: entries.map((e: { id: string; repo: string; prNumber: string; prTitle: string; author: string; riskScore: number; riskLevel: string; data: string; createdAt: Date }) => ({
       id: e.id,
       repo: e.repo,
       prNumber: e.prNumber,

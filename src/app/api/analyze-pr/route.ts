@@ -11,7 +11,6 @@ import { runRiskRules } from "@/services/review/riskRules";
 import { mergeReviewResults } from "@/services/review/mergeReviewResults";
 import { buildMarkdownReport } from "@/services/review/reportBuilder";
 import { analyzePrWithAI } from "@/services/ai/analyzePr";
-import { AiClientError } from "@/services/ai/aiClient";
 import { createAppError } from "@/services/errors/appErrors";
 
 // ============================================================
@@ -137,12 +136,6 @@ function parseReviewerPersona(raw: unknown): ReviewerPersona {
   return DEFAULT_PERSONA;
 }
 
-const unknownErrorResponse: AnalyzePrResponse = {
-  success: false,
-  mode: "mock",
-  error: createAppError("UNKNOWN_ERROR"),
-};
-
 // ============================================================
 // 流式响应
 // ============================================================
@@ -263,41 +256,54 @@ export async function POST(request: Request) {
           `[analyze-pr] rule check done — ${ruleCheckResults.length} hits`,
         );
 
-        // ── Step 5: AI 分析 ──
+        // ── Step 5: AI 分析（最多重试 3 次）──
         send({ type: "step", stepId: "ai-review", stepIndex: 4, totalSteps: TOTAL_STEPS });
-
-        let reviewResult = getMockReviewByPersona(reviewerPersona);
-        let aiSource: "bailian" | "mock" = "mock";
-        let aiWarning: string | undefined;
-        const warnings: AppError[] = [];
 
         console.log("[analyze-pr] calling AI analysis...");
         const aiStart = Date.now();
 
-        try {
-          const aiResult = await analyzePrWithAI({
-            pullRequest: pr,
-            changedFiles,
-            ruleCheckResults,
-            reviewerPersona,
-          });
-          reviewResult = aiResult.reviewResult;
-          aiSource = aiResult.source;
-          console.log(
-            `[analyze-pr] AI done — ${((Date.now() - aiStart) / 1000).toFixed(1)}s, ${reviewResult.risks.length} risks, ${reviewResult.suggestions.length} suggestions`,
-          );
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error);
-          console.warn(`[analyze-pr] AI failed: ${msg}`);
-          aiSource = "mock";
-          aiWarning = `AI analysis failed, fallback to mock review: ${msg}`;
+        const MAX_AI_RETRIES = 3;
+        let reviewResult!: Awaited<ReturnType<typeof analyzePrWithAI>>["reviewResult"];
+        let aiSource!: "bailian" | "mock";
+        let lastAiError: string | null = null;
 
-          if (error instanceof AiClientError) {
-            warnings.push(createAppError(error.code as AppErrorCode, msg));
-          } else {
-            warnings.push(createAppError("AI_API_ERROR", msg));
+        for (let attempt = 1; attempt <= MAX_AI_RETRIES; attempt++) {
+          try {
+            const aiResult = await analyzePrWithAI({
+              pullRequest: pr,
+              changedFiles,
+              ruleCheckResults,
+              reviewerPersona,
+            });
+            reviewResult = aiResult.reviewResult;
+            aiSource = aiResult.source;
+            lastAiError = null;
+            console.log(
+              `[analyze-pr] AI done — ${((Date.now() - aiStart) / 1000).toFixed(1)}s, ${reviewResult.risks.length} risks, ${reviewResult.suggestions.length} suggestions`,
+            );
+            break;
+          } catch (error) {
+            lastAiError = error instanceof Error ? error.message : String(error);
+            console.warn(
+              `[analyze-pr] AI attempt ${attempt}/${MAX_AI_RETRIES} failed: ${lastAiError}`,
+            );
+            if (attempt < MAX_AI_RETRIES) {
+              await new Promise((r) => setTimeout(r, attempt * 1000));
+            }
           }
         }
+
+        if (lastAiError !== null) {
+          send({
+            type: "error",
+            code: "AI_API_ERROR",
+            message: `AI 分析失败（已重试 ${MAX_AI_RETRIES} 次）：${lastAiError}。请稍后重新分析。`,
+          });
+          controller.close();
+          return;
+        }
+
+        const warnings: AppError[] = [];
 
         // ── Step 6: 生成报告 ──
         send({ type: "step", stepId: "report", stepIndex: 5, totalSteps: TOTAL_STEPS });
@@ -310,7 +316,6 @@ export async function POST(request: Request) {
             reviewResult,
             source: "github",
             aiSource,
-            warning: aiWarning,
           });
 
         if (reportWarning) warnings.push(reportWarning);
@@ -330,64 +335,25 @@ export async function POST(request: Request) {
             markdownReport,
             source: "github",
             aiSource,
-            warning: aiWarning,
             warnings: warnings.length > 0 ? warnings : undefined,
             reviewerPersona,
           },
         });
         controller.close();
       } catch (error) {
-        console.warn(
-          `[analyze-pr] GitHub API failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error(`[analyze-pr] GitHub API failed: ${msg}`);
 
-        if (error instanceof GitHubApiError) {
-          send({ type: "step", stepId: "rule-check", stepIndex: 3, totalSteps: TOTAL_STEPS });
-          send({ type: "step", stepId: "ai-review", stepIndex: 4, totalSteps: TOTAL_STEPS });
-          send({ type: "step", stepId: "report", stepIndex: 5, totalSteps: TOTAL_STEPS });
+        const code =
+          error instanceof GitHubApiError
+            ? (error.code as AppErrorCode)
+            : "GITHUB_API_ERROR";
 
-          const ruleCheckResults = runRiskRules(mockChangedFiles);
-          const personaFallbackReview = getMockReviewByPersona(reviewerPersona);
-          const { mergedRisks, markdownReport, warning: reportWarning } =
-            buildReportSafely({
-              pullRequest: mockPr,
-              changedFiles: mockChangedFiles,
-              ruleCheckResults,
-              reviewResult: personaFallbackReview,
-              source: "mock",
-              aiSource: "mock",
-              warning: error.message,
-            });
-
-          const ghAppError = createAppError(error.code as AppErrorCode, error.message);
-          const warnList = [ghAppError];
-          if (reportWarning) warnList.push(reportWarning);
-
-          send({
-            type: "done",
-            data: {
-              success: true,
-              mode: "mock",
-              pullRequest: mockPr,
-              reviewResult: personaFallbackReview,
-              changedFiles: mockChangedFiles,
-              ruleCheckResults,
-              mergedRisks,
-              markdownReport,
-              source: "mock",
-              aiSource: "mock",
-              warning: error.message,
-              warnings: warnList,
-              reviewerPersona,
-            },
-          });
-        } else {
-          send({
-            type: "error",
-            code: "UNKNOWN_ERROR",
-            message: "服务器内部错误，请稍后重试",
-          });
-        }
+        send({
+          type: "error",
+          code,
+          message: `GitHub 数据获取失败：${msg}。请检查 PR 链接是否正确，或稍后重试。`,
+        });
         controller.close();
       }
     },
