@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "postinstall": "prisma generate",
+    "test": "vitest run",
     "lint": "eslint",
     "dev:local": "cross-env NODE_OPTIONS=--dns-result-order=ipv4first NODE_TLS_REJECT_UNAUTHORIZED=0 next dev"
   },
@@ -29,6 +30,7 @@
     "eslint-config-next": "16.2.6",
     "prisma": "^5.22.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   }
 }
