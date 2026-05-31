@@ -82,7 +82,7 @@ export function getAiClientConfigFromEnv(): AiClientConfig {
 async function fetchAiWithTimeout(
   url: string,
   options: RequestInit,
-  timeoutMs = 30000,
+  timeoutMs = 120000,
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

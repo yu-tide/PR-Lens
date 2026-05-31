@@ -14,6 +14,18 @@ const MAX_PATCH_LINES_PER_FILE = 40;
 /** user prompt 的 patch 区段最大行数 */
 const MAX_PATCH_SECTION_LINES = 200;
 
+/** 不纳入 AI Diff 分析的噪声文件（仅列出在变更摘要中，跳过 patch 内容） */
+const NOISE_FILE_PATTERNS = [
+  /^package-lock\.json$/,
+  /^yarn\.lock$/,
+  /^pnpm-lock\.yaml$/,
+  /^go\.sum$/,
+  /^Cargo\.lock$/,
+  /^Gemfile\.lock$/,
+  /^poetry\.lock$/,
+  /\.lock$/,
+];
+
 // ============================================================
 // Persona 独立 System Prompt
 // 三层锐化：1)专业身份替代通才 2)排除范围缩小焦点 3)角色专属产出格式
@@ -67,6 +79,8 @@ const PERSONA_SYSTEM_PROMPTS: Record<ReviewerPersona, string> = {
     "## 证据要求",
     "每条风险的 reason 必须包含：(1) 攻击面——该漏洞可被如何利用；(2) 影响范围——受影响的数据/用户/系统范围。",
     "每条风险的 suggestion 必须包含具体的修复步骤，如有可能给出修复前后的代码对比。",
+    "每条风险必须包含 confidence 字段（0-100 的整数），表示你对该风险判断的确定程度。",
+    "每条风险应提供至少 1 条 evidence，包含具体文件路径、行号、相关代码片段和该证据的说明。",
   ].join("\n"),
 
   /* ── 性能审查员 ── */
@@ -89,6 +103,8 @@ const PERSONA_SYSTEM_PROMPTS: Record<ReviewerPersona, string> = {
     "",
     "## 证据要求",
     "每条风险的 reason 必须包含：(1) 触发条件——什么场景下性能问题会显现；(2) 性能影响量化估计——预期影响 QPS/延迟/内存的规模（如「高 QPS 下每次请求额外 50ms 开销」）。",
+    "每条风险必须包含 confidence 字段（0-100 的整数），表示你对该风险判断的确定程度。",
+    "每条风险应提供至少 1 条 evidence，包含具体文件路径、行号、相关代码片段和该证据的说明。",
   ].join("\n"),
 
   /* ── 测试审查员 ── */
@@ -111,6 +127,8 @@ const PERSONA_SYSTEM_PROMPTS: Record<ReviewerPersona, string> = {
     "",
     "## 证据要求",
     "每条风险的 reason 必须包含：(1) 未覆盖场景/输入——具体说明哪个代码路径、哪个输入值未被测试；(2) 建议的测试策略——应添加什么类型的测试（单元/集成/E2E）、覆盖哪些关键断言。",
+    "每条风险必须包含 confidence 字段（0-100 的整数），表示你对该风险判断的确定程度。",
+    "每条风险应提供至少 1 条 evidence，包含具体文件路径、行号、相关代码片段和该证据的说明。",
   ].join("\n"),
 
   /* ── 可维护性审查员 ── */
@@ -133,6 +151,8 @@ const PERSONA_SYSTEM_PROMPTS: Record<ReviewerPersona, string> = {
     "",
     "## 证据要求",
     "每条风险的 reason 必须包含：(1) 根因——为什么当前写法不利于长期维护（如「违反开闭原则导致每次新增类型需改 switch」）；(2) 具体重构操作——给出可执行的重构步骤，如「提取 X 到 Y 模块」「将硬编码值 Z 定义为常量」。",
+    "每条风险必须包含 confidence 字段（0-100 的整数），表示你对该风险判断的确定程度。",
+    "每条风险应提供至少 1 条 evidence，包含具体文件路径、行号、相关代码片段和该证据的说明。",
   ].join("\n"),
 };
 
@@ -192,11 +212,18 @@ export function buildAiReviewPrompt(input: AiAnalysisInput): {
   lines.push("## 变更 Diff（每文件最多展示部分内容）");
 
   let patchLinesSoFar = 0;
-  const patchLimitReached = false;
+  let skippedNoiseFiles = 0;
 
   for (const file of changedFiles) {
-    if (patchLimitReached) break;
+    if (patchLinesSoFar >= MAX_PATCH_SECTION_LINES) break;
     if (!file.patch || file.isBinary) continue;
+
+    /* 跳过锁文件等噪声文件，不在 prompt 中展示完整 diff（但已在变更列表中标注） */
+    const basename = file.filename.split("/").pop() ?? file.filename;
+    if (NOISE_FILE_PATTERNS.some((p) => p.test(basename))) {
+      skippedNoiseFiles++;
+      continue;
+    }
 
     const patchLines = file.patch.split("\n");
     const top = patchLines.slice(0, MAX_PATCH_LINES_PER_FILE);
@@ -212,6 +239,12 @@ export function buildAiReviewPrompt(input: AiAnalysisInput): {
 
     patchLinesSoFar += top.length;
     if (patchLinesSoFar >= MAX_PATCH_SECTION_LINES) break;
+  }
+
+  /* 标注被跳过的噪声文件 */
+  if (skippedNoiseFiles > 0) {
+    lines.push(`> ℹ️ 已跳过 ${skippedNoiseFiles} 个锁文件/生成文件的 diff 内容（如 package-lock.json），其变更摘要已在文件列表中展示。`);
+    lines.push("");
   }
 
   /* 规则预检查结果 */
@@ -245,7 +278,16 @@ export function buildAiReviewPrompt(input: AiAnalysisInput): {
     '      "file": "关联文件路径",',
     '      "reason": "风险原因说明",',
     '      "suggestion": "建议处理方式",',
-    '      "requiresHumanCheck": true',
+    '      "requiresHumanCheck": true,',
+    '      "confidence": 85,',
+    '      "evidence": [',
+    "        {",
+    '          "file": "src/services/auth.ts",',
+    '          "line": 42,',
+    '          "code": "await redis.incr(key)",',
+    '          "reason": "高并发下每次请求额外产生 Redis 网络往返"',
+    "        }",
+    "      ]",
     "    }",
     "  ],",
     '  "suggestions": [',
@@ -254,6 +296,17 @@ export function buildAiReviewPrompt(input: AiAnalysisInput): {
     '      "title": "建议标题",',
     '      "category": "Correctness | Security | Maintainability | Testing | Documentation",',
     '      "suggestion": "具体可执行的建议"',
+    "    }",
+    "  ],",
+    '  "draftComments": [',
+    "    {",
+    '      "sourceFindingId": "risk-1",',
+    '      "title": "建议补充 Redis 延迟与失败场景处理",',
+    '      "severity": "HIGH",',
+    '      "file": "src/server/api/rate-limit.ts",',
+    '      "line": 42,',
+    '      "confidence": 91,',
+    '      "body": "**潜在性能影响**\\n高流量下 Redis 调用可能成为瓶颈。\\n建议：在生产环境中压测并监控 Redis 延迟。\\n证据：src/server/api/rate-limit.ts · 第 42 行\\n置信度：91%"',
     "    }",
     "  ],",
     '  "testGaps": [',
@@ -269,7 +322,14 @@ export function buildAiReviewPrompt(input: AiAnalysisInput): {
     "}",
     "```",
     "",
-    "注意：risks 和 suggestions 数组各至少包含 1 条，最多各 5 条。testGaps 可选，最多 3 条。不要返回任何 JSON 之外的内容。",
+    "注意：risks 和 suggestions 数组各至少包含 1 条，最多各 5 条。testGaps 可选，最多 3 条。draftComments 可选，最多 5 条。",
+    "draftComments 要求：",
+    "1. body 必须适合直接复制到 GitHub PR Review 评论中，语气像 reviewer。",
+    "2. body 使用 Markdown，不要用代码块包裹。",
+    "3. 每条草稿对应一个关键风险或建议。",
+    "4. 如果没有明确证据，写「建议结合相关 diff 人工复核」，不要写「证据：暂无」。",
+    "5. body 内部行与行之间只空一行（\\n\\n），不要大量空行。",
+    "不要返回任何 JSON 之外的内容。",
   );
 
   return {
