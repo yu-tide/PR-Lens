@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ClientAuthWrapper } from "./client-auth-wrapper";
 
 export const metadata: Metadata = {
   title: "PR Lens",
@@ -13,7 +14,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" className="h-full antialiased">
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        <ClientAuthWrapper>{children}</ClientAuthWrapper>
+      </body>
     </html>
   );
 }
