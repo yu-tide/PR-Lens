@@ -29,3 +29,6 @@ model Analysis {
   createdAt  DateTime @default(now())
 }
 
+
+
+

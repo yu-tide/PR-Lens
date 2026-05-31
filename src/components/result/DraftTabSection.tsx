@@ -25,7 +25,7 @@ export function DraftTabSection({
         <div className={`${SUBTLE_PANEL_CLASS} px-5 py-8 text-center`}>
           <p className="text-sm font-medium text-slate-600">暂无评论草稿</p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            可从风险卡片中点击"加入草稿箱"。
+            可从风险卡片中点击「加入草稿箱」。
           </p>
         </div>
       </section>

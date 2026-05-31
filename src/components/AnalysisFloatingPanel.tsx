@@ -140,9 +140,12 @@ export function AnalysisFloatingPanel({
     // 实时计时：分析中每秒递增，完成/出错时停止
     useEffect(() => {
         if (status !== "analyzing") return;
-        setElapsed(0);
+        const frame = requestAnimationFrame(() => setElapsed(0));
         const timer = setInterval(() => setElapsed((n) => n + 1), 100);
-        return () => clearInterval(timer);
+        return () => {
+            cancelAnimationFrame(frame);
+            clearInterval(timer);
+        };
     }, [status, open]);
 
     const title =
