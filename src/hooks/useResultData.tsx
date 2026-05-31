@@ -18,7 +18,7 @@ import type {
 } from "@/utils/result-fallbacks";
 import {
   extractPrNumber, mapRiskLevel, mapCategoryToIcon, getRiskLabel,
-  getRiskScoreLevel, normalizeRiskLevel, calculateRiskScore,
+  getRiskScoreLevel, normalizeRiskLevel, calculateRiskScore, calculateAnchoredRiskScore,
   parseSignedDisplayNumber, readNumberField, normalizePercent,
   readChangedFilesFromResponse, buildFallbackEvidence,
   getConfidenceByLevel, buildTestGaps,
@@ -348,7 +348,7 @@ export function useResultData(): UseResultDataReturn {
 
     const riskScore = explicitScore !== null
       ? normalizePercent(explicitScore)
-      : calculateRiskScore(displayRisks);
+      : calculateAnchoredRiskScore(displayRisks, displayRuleCheckResults);
 
     const confidence = explicitConfidence !== null
       ? normalizePercent(explicitConfidence)

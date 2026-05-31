@@ -126,7 +126,7 @@ export async function callAiChatCompletion(params: {
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
-    temperature: 0.2,
+    temperature: 0,
   });
 
   console.log(`  [ai] calling ${model} @ ${baseUrl}...`);
