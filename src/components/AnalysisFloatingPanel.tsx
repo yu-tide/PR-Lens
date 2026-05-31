@@ -16,6 +16,7 @@ type AnalysisFloatingPanelProps = {
     onClose: () => void;
     onRetry: () => void;
     onViewResult: () => void;
+    onCancel?: () => void;
 };
 
 /** 根据错误码返回用户可读标题 */
@@ -115,13 +116,16 @@ export function AnalysisFloatingPanel({
     onClose,
     onRetry,
     onViewResult,
+    onCancel,
 }: AnalysisFloatingPanelProps) {
     const [entered, setEntered] = useState(false);
     const [expanded, setExpanded] = useState(false);
     const [elapsed, setElapsed] = useState(0);
+    const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
     useEffect(() => {
         if (!open) {
+            setShowCancelConfirm(false);
             const frame = requestAnimationFrame(() => {
                 setEntered(false);
                 setExpanded(false);
@@ -216,13 +220,25 @@ export function AnalysisFloatingPanel({
                             </p>
                         </div>
 
-                        <button
-                            onClick={onClose}
-                            className="rounded-2xl p-2 text-slate-400 transition hover:bg-white/80 hover:text-slate-700"
-                            aria-label="关闭"
-                        >
-                            <CloseIcon />
-                        </button>
+                        {status === "analyzing" && onCancel ? (
+                            <button
+                                type="button"
+                                onClick={() => setShowCancelConfirm(true)}
+                                title="取消分析"
+                                aria-label="取消分析"
+                                className="absolute right-5 top-5 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/80 text-slate-400 shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-500"
+                            >
+                                <CloseIcon className="h-4 w-4" />
+                            </button>
+                        ) : (
+                            <button
+                                onClick={onClose}
+                                className="rounded-2xl p-2 text-slate-400 transition hover:bg-white/80 hover:text-slate-700"
+                                aria-label="关闭"
+                            >
+                                <CloseIcon />
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -301,6 +317,38 @@ export function AnalysisFloatingPanel({
                             )}
                         </div>
                     </div>
+
+                    {showCancelConfirm && (
+                        <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                            <p className="text-sm font-semibold text-amber-800">
+                                是否取消本次 PR 分析？
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-amber-700">
+                                当前分析进度不会保存。
+                            </p>
+
+                            <div className="mt-3 flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCancelConfirm(false)}
+                                    className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
+                                >
+                                    继续分析
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowCancelConfirm(false);
+                                        onCancel?.();
+                                    }}
+                                    className="h-9 rounded-xl bg-red-500 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-red-600"
+                                >
+                                    取消分析
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     <button
                         onClick={() => setExpanded((value) => !value)}

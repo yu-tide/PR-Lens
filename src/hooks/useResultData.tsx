@@ -7,21 +7,22 @@ import {
 } from "@/components/icons";
 import type {
   AnalyzePrResponse, AppError, DashboardData, DraftComment,
-  OverviewDisplay, ReviewFindingDisplay, RuleCheckResult,
-  TabKey, TestGapDisplay, ReviewerPersona,
+  OverviewDisplay, ReviewDraftComment, ReviewFindingDisplay,
+  RuleCheckResult, TabKey, TestGapDisplay, ReviewerPersona,
 } from "@/types";
 import {
-  SESSION_KEY, FALLBACK, fallbackReviewOrder,
+  SESSION_KEY, FALLBACK,
 } from "@/utils/result-fallbacks";
 import type {
-  RiskDisplay, ReviewOrderItem, SuggestionDisplay, PrInfoDisplay,
+  RiskDisplay, SuggestionDisplay, PrInfoDisplay,
 } from "@/utils/result-fallbacks";
 import {
   extractPrNumber, mapRiskLevel, mapCategoryToIcon, getRiskLabel,
-  getRiskScoreLevel, normalizeRiskLevel, calculateRiskScore, calculateAnchoredRiskScore,
+  getRiskScoreLevel, calculateAnchoredRiskScore,
   parseSignedDisplayNumber, readNumberField, normalizePercent,
-  readChangedFilesFromResponse, buildFallbackEvidence,
-  getConfidenceByLevel, buildDraftCommentBody, buildTestGaps,
+  readChangedFilesFromResponse,
+  getConfidenceByLevel, buildTestGaps,
+  normalizeDraftBody, normalizeRiskLevel,
 } from "@/utils/review-helpers";
 
 // ============================================================
@@ -58,7 +59,6 @@ export interface UseResultDataReturn {
   displaySuggestions: SuggestionDisplay[];
   displayRuleCheckResults: RuleCheckResult[];
   displayTestGaps: TestGapDisplay[];
-  displayReviewOrder: ReviewOrderItem[];
   selectedDraftText: string;
   displayMarkdownLines: string[];
   markdownReport: string;
@@ -67,6 +67,54 @@ export interface UseResultDataReturn {
   displayDashboard: DashboardData;
   tabs: Array<{ key: TabKey; label: string; icon: ReactNode; description: string }>;
   reviewerPersona: ReviewerPersona | undefined;
+}
+
+// ============================================================
+// Helper: normalize AI draft comments
+// ============================================================
+
+function normalizeAiDraftComments(
+  items: unknown,
+): DraftComment[] {
+  if (!Array.isArray(items)) return [];
+
+  const result: DraftComment[] = [];
+
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    if (!item || typeof item !== "object") continue;
+
+    const record = item as Record<string, unknown>;
+    const title =
+      typeof record.title === "string" && record.title.trim()
+        ? record.title.trim()
+        : `AI 评论草稿 ${index + 1}`;
+
+    const body =
+      typeof record.body === "string" && record.body.trim()
+        ? normalizeDraftBody(record.body)
+        : "";
+
+    if (!body) continue;
+
+    const severityStr = String(record.severity ?? "medium");
+    const severity = normalizeRiskLevel(severityStr);
+
+    result.push({
+      id: `ai-draft-${index}`,
+      sourceFindingId:
+        typeof record.sourceFindingId === "string"
+          ? record.sourceFindingId
+          : undefined,
+      title,
+      body,
+      severity,
+      selected: true,
+      edited: false,
+    });
+  }
+
+  return result;
 }
 
 // ============================================================
@@ -153,28 +201,40 @@ export function useResultData(): UseResultDataReturn {
         title: r.title,
         description: r.reason,
         suggestion: r.suggestion,
+        file: r.file,
       };
     });
   }, [analysisData]);
 
   // ── Derived: review findings ───────────────────────────
   const displayReviewFindings: ReviewFindingDisplay[] = useMemo(() => {
-    return displayRisks.map((risk, index) => ({
-      id: `finding-${index}`,
-      level: risk.level,
-      label: risk.label,
-      title: risk.title,
-      description: risk.description,
-      suggestion: risk.suggestion,
-      category:
-        index === 0 ? "Performance"
-        : index === 1 ? "Configuration"
-        : "Compatibility",
-      confidence: getConfidenceByLevel(risk.level, index),
-      needsHumanCheck: risk.level !== "low",
-      evidence: buildFallbackEvidence(index),
-    }));
-  }, [displayRisks]);
+    const apiRisks = analysisData?.reviewResult?.risks;
+    return displayRisks.map((risk, index) => {
+      const aiRisk = apiRisks?.[index];
+      const aiConfidence = aiRisk?.confidence;
+      const aiEvidence = aiRisk?.evidence;
+
+      return {
+        id: `finding-${index}`,
+        level: risk.level,
+        label: risk.label,
+        title: risk.title,
+        description: risk.description,
+        suggestion: risk.suggestion,
+        category:
+          index === 0 ? "Performance"
+          : index === 1 ? "Configuration"
+          : "Compatibility",
+        confidence: aiConfidence ?? getConfidenceByLevel(risk.level, index),
+        needsHumanCheck: risk.level !== "low" || (aiRisk?.requiresHumanCheck === true),
+        evidence: (aiEvidence && aiEvidence.length > 0)
+          ? aiEvidence
+          : risk.file
+            ? [{ file: risk.file, reason: risk.description }]
+            : [],
+      };
+    });
+  }, [displayRisks, analysisData]);
 
   // ── Derived: suggestions ───────────────────────────────
   const displaySuggestions: SuggestionDisplay[] = useMemo(() => {
@@ -188,7 +248,7 @@ export function useResultData(): UseResultDataReturn {
   }, [analysisData]);
 
   // ── Derived: test gaps ─────────────────────────────────
-  // 优先使用 AI 返回的测试缺口，没有时 fallback 到规则函数
+  // 优先使用 AI 返回的测试缺口，没有则 fallback 到规则推断
   const displayTestGaps = useMemo(() => {
     const aiTestGaps = analysisData?.reviewResult?.testGaps;
     if (aiTestGaps && aiTestGaps.length > 0) {
@@ -201,42 +261,27 @@ export function useResultData(): UseResultDataReturn {
         severity: g.severity,
         reason: g.reason,
         suggestedTestCases: g.suggestedTestCases,
+        source: "ai",
       }));
     }
+    // Fallback: 规则推断测试缺口
     return buildTestGaps(displayChangedFiles);
   }, [analysisData, displayChangedFiles]);
-
-  // ── Derived: review order ──────────────────────────────
-  const displayReviewOrder: ReviewOrderItem[] = useMemo(() => {
-    if (displayRuleCheckResults.length === 0) return fallbackReviewOrder;
-    return displayRuleCheckResults.map((rule) => ({
-      file: rule.file
-        ? `${rule.file}${rule.line ? ` · 第 ${rule.line} 行` : ""}`
-        : "规则预检查",
-      title: rule.title,
-      severity: normalizeRiskLevel(rule.severity),
-      description: rule.message,
-    }));
-  }, [displayRuleCheckResults]);
 
   // ── Draft init ─────────────────────────────────────────
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       setDraftComments((prev) => {
         if (prev.length > 0) return prev;
-        return displayReviewFindings.slice(0, 2).map((finding) => ({
-          id: `draft-${finding.id}`,
-          sourceFindingId: finding.id,
-          title: finding.title,
-          severity: finding.level,
-          selected: true,
-          edited: false,
-          body: buildDraftCommentBody(finding),
-        }));
+
+        // 仅使用 AI 返回的 draftComments，不生成前端兜底草稿
+        return normalizeAiDraftComments(
+          analysisData?.reviewResult?.draftComments,
+        );
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [displayReviewFindings]);
+  }, [analysisData]);
 
   // ── Derived: selected draft text ───────────────────────
   const selectedDraftText = useMemo(() => {
@@ -420,14 +465,14 @@ export function useResultData(): UseResultDataReturn {
   const tabs: Array<{ key: TabKey; label: string; icon: ReactNode; description: string }> = [
     { key: "risk", label: "风险分析", icon: <ShieldIcon className="h-4 w-4" />,
       description: "按风险类型聚合规则与 AI 发现，并展示证据与置信度。" },
+    { key: "preRule", label: "预规则分析", icon: <SparkIcon className="h-4 w-4" />,
+      description: "展示确定性规则引擎命中的结果，支持逐条查看命中依据与建议。" },
     { key: "suggestion", label: "审查建议", icon: <MessageIcon className="h-4 w-4" />,
       description: "AI 建议先进入草稿，由人工确认后再复制使用。" },
     { key: "testGap", label: "测试缺口", icon: <BeakerIcon className="h-4 w-4" />,
       description: "根据变更文件识别潜在测试覆盖缺口。" },
     { key: "draft", label: "评论草稿箱", icon: <FileIcon className="h-4 w-4" />,
       description: "将风险发现整理成可编辑、可筛选、可复制的 Review 评论草稿。" },
-    { key: "order", label: "智能审查顺序", icon: <SparkIcon className="h-4 w-4" />,
-      description: "根据风险等级、审查依据与潜在影响面生成优先级。" },
     { key: "markdown", label: "Markdown 报告", icon: <FileIcon className="h-4 w-4" />,
       description: "预览可复制、可下载的 Markdown 审查报告。" },
   ];
@@ -442,7 +487,7 @@ export function useResultData(): UseResultDataReturn {
     activeTab, setActiveTab, draftComments, setDraftComments,
     isMock, displayChangedFiles, displayPrInfo, displaySummary,
     displayRisks, displayReviewFindings, displaySuggestions,
-    displayRuleCheckResults, displayTestGaps, displayReviewOrder,
+    displayRuleCheckResults, displayTestGaps,
     selectedDraftText, displayMarkdownLines, markdownReport,
     displayWarnings, displayOverview, displayDashboard, tabs,
     reviewerPersona,

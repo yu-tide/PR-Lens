@@ -264,13 +264,27 @@ export function normalizeDraftBody(body: string): string {
 }
 
 export function buildDraftCommentBody(finding: ReviewFindingDisplay): string {
-    return normalizeDraftBody([
+    const evidence = finding.evidence?.[0];
+
+    const lines = [
         `**${finding.title}**`,
         finding.description,
         `建议：${finding.suggestion}`,
-        `证据：${finding.evidence[0]?.file ?? "暂无"}${finding.evidence[0]?.line ? ` · 第 ${finding.evidence[0].line} 行` : ""}`,
-        `置信度：${finding.confidence}%`,
-    ].join("\n"));
+    ];
+
+    if (evidence?.file) {
+        lines.push(
+            `证据：${evidence.file}${evidence.line ? ` · 第 ${evidence.line} 行` : ""}`,
+        );
+    } else {
+        lines.push("证据：建议结合相关 diff 人工复核。");
+    }
+
+    if (finding.confidence) {
+        lines.push(`置信度：${finding.confidence}%`);
+    }
+
+    return normalizeDraftBody(lines.join("\n"));
 }
 
 export function buildTestGaps(files: string[]): TestGapDisplay[] {
@@ -304,6 +318,8 @@ export function buildTestGaps(files: string[]): TestGapDisplay[] {
 
         const severity: RiskLevel = hasRelatedTest ? "low" : index <= 1 ? "medium" : "low";
 
+        const fileName = file.split("/").pop() ?? file;
+
         return {
             id: `test-gap-${index}`,
             sourceFile: file,
@@ -312,14 +328,15 @@ export function buildTestGaps(files: string[]): TestGapDisplay[] {
                 .replace(/\.(ts|tsx|js|jsx)$/i, ".test.ts"),
             severity,
             reason: hasRelatedTest
-                ? "已检测到相关测试文件，但仍建议确认是否覆盖异常路径、边界值与高并发场景。"
-                : "该 PR 修改了核心逻辑文件，但未明显检测到一一对应的测试文件变更。",
+                ? `已检测到相关测试文件，但仍建议确认 \`${fileName}\` 的异常路径、边界条件与关键分支是否全部被覆盖。`
+                : `该 PR 修改了 \`${fileName}\`，但未检测到对应的测试文件变更，存在回归风险。`,
             suggestedTestCases: [
-                "补充正常路径测试，确认限流未触发时请求可以正常通过。",
-                "补充超限路径测试，确认状态码、错误信息与响应头符合预期。",
-                "补充 Redis 失败或超时场景，确认系统具备合理降级策略。",
-                "补充边界值测试，例如窗口期边界、阈值为 0 或极大值的情况。",
+                `补充 \`${fileName}\` 核心逻辑的正常路径测试，确认主要功能按预期执行。`,
+                `补充异常路径测试，覆盖网络超时、服务不可用、数据异常等错误场景。`,
+                "补充边界值测试，确认 null、undefined、空集合、0、负数等边界输入的安全性。",
+                `补充集成测试，确认 \`${fileName}\` 与其依赖模块的交互行为正确。`,
             ],
+            source: "rule",
         };
     });
 }

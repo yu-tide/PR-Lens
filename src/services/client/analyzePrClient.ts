@@ -17,6 +17,29 @@ export interface StepProgress {
 type ProgressCallback = (step: StepProgress) => void;
 
 // ============================================================
+// 内部工具
+// ============================================================
+
+/**
+ * 合并两个 AbortSignal：任一 signal abort 时合并后的 signal 也 abort。
+ * 用于同时支持外部取消（用户点击取消按钮）和内部超时取消。
+ */
+function combineAbortSignals(a: AbortSignal, b: AbortSignal): AbortSignal {
+  const controller = new AbortController();
+
+  const onAbort = () => controller.abort();
+  a.addEventListener("abort", onAbort, { once: true });
+  b.addEventListener("abort", onAbort, { once: true });
+
+  // 如果其中任一个已经 aborted，立即 abort
+  if (a.aborted || b.aborted) {
+    controller.abort();
+  }
+
+  return controller.signal;
+}
+
+// ============================================================
 // 请求（带进度回调）
 // ============================================================
 
@@ -25,22 +48,27 @@ type ProgressCallback = (step: StepProgress) => void;
  *
  * - Mock 模式：服务端返回普通 JSON，直接解析
  * - 真实模式：服务端返回 SSE 流，逐条接收进度事件，最终返回完整分析结果
- * - 超时默认 60 秒（真实分析需要更长时间）
- */
+ * - 超时默认 180 秒（AI 分析最长 120s + 缓冲） */
 export async function requestAnalyzePr(
   body: AnalyzePrRequest,
-  timeoutMs = 60000,
+  timeoutMs = 180000,
   onProgress?: ProgressCallback,
+  signal?: AbortSignal,
 ): Promise<AnalyzePrResponse> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  // 合并外部 signal 和超时 signal：任一 abort 都会触发
+  const combinedSignal = signal
+    ? combineAbortSignals(signal, controller.signal)
+    : controller.signal;
 
   try {
     const res = await fetch("/api/analyze-pr", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: controller.signal,
+      signal: combinedSignal,
     });
 
     // Mock 模式或错误：普通 JSON 响应
@@ -67,6 +95,11 @@ export async function requestAnalyzePr(
     return await readStreamResponse(res.body, onProgress);
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
+      // 用户主动取消 → 向上抛出，由调用方处理
+      if (signal?.aborted) {
+        throw err;
+      }
+      // 超时 → 返回错误
       return {
         success: false,
         mode: "mock",
@@ -174,7 +207,10 @@ async function readStreamResponse(
         action: "请稍后重试。",
       },
     };
-  } catch {
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw err; // 向上抛出，由 requestAnalyzePr 的外层 catch 统一处理
+    }
     return {
       success: false,
       mode: "mock",

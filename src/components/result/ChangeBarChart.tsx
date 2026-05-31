@@ -4,47 +4,95 @@ import { ChartIcon } from "@/components/icons";
 import { DashboardTooltip } from "@/components/result/DashboardTooltip";
 
 type ChangeBarChartProps = {
-  additions: number; deletions: number; changedFileCount: number;
-  totalChanges: number; onClick: () => void;
+  additions: number;
+  deletions: number;
+  changedFileCount: number;
+  totalChanges: number;
+  onClick: () => void;
 };
 
 export function ChangeBarChart({
-  additions, deletions, changedFileCount, totalChanges, onClick,
+  additions,
+  deletions,
+  changedFileCount,
+  totalChanges,
+  onClick,
 }: ChangeBarChartProps) {
   const max = Math.max(additions, deletions, 1);
-  const additionPercent = Math.max(8, Math.round((additions / max) * 100));
-  const deletionPercent = Math.max(8, Math.round((deletions / max) * 100));
+  const additionPercent = Math.max(6, Math.round((additions / max) * 100));
+  const deletionPercent = Math.max(6, Math.round((deletions / max) * 100));
 
   return (
-    <button type="button" onClick={onClick}
-      className="group relative z-0 flex min-h-[76px] flex-col justify-center rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-left shadow-inner transition hover:z-30 hover:border-blue-300 hover:bg-blue-50/70 hover:shadow-[0_10px_24px_rgba(37,99,235,0.12)] focus-visible:z-30">
-      <div className="flex items-center justify-between gap-3">
+    <button
+      type="button"
+      onClick={onClick}
+      className="group relative z-0 flex h-full min-h-[112px] flex-col justify-between overflow-hidden rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 text-left shadow-sm transition hover:z-30 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-slate-50/40 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] focus-visible:z-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+    >
+      <span className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-blue-200/30 blur-2xl" />
+
+      <div className="relative flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold text-slate-700">代码变更</p>
-          <p className="mt-0.5 text-[11px] text-slate-400">{changedFileCount} 个文件 · 共 {totalChanges} 行</p>
+          <p className="text-[11px] font-medium text-slate-500">代码变更</p>
+
+          <p className="mt-1 text-2xl font-bold leading-none text-slate-950">
+            {changedFileCount}
+            <span className="ml-1 text-xs font-medium text-slate-400">
+              文件
+            </span>
+          </p>
         </div>
-        <ChartIcon className="h-4.5 w-4.5 text-blue-500" />
+
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 ring-1 ring-blue-100">
+          <ChartIcon className="h-4 w-4" />
+        </span>
       </div>
-      <div className="mt-1.5 space-y-1">
+
+      <div className="relative space-y-1.5">
         <div>
-          <div className="mb-0.5 flex justify-between text-[11px] font-semibold text-emerald-600">
-            <span>新增</span><span>+{additions}</span>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[10px] font-medium text-slate-400">
+              新增
+            </span>
+
+            <span className="text-sm font-bold leading-none text-emerald-600">
+              +{additions}
+            </span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-emerald-100">
-            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${additionPercent}%` }} />
+
+          <div className="h-1.5 overflow-hidden rounded-full bg-emerald-50">
+            <div
+              className="h-full rounded-full bg-emerald-500"
+              style={{ width: `${additionPercent}%` }}
+            />
           </div>
         </div>
+
         <div>
-          <div className="mb-0.5 flex justify-between text-[11px] font-semibold text-red-500">
-            <span>删除</span><span>-{deletions}</span>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[10px] font-medium text-slate-400">
+              删除
+            </span>
+
+            <span className="text-sm font-bold leading-none text-red-500">
+              -{deletions}
+            </span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-red-100">
-            <div className="h-full rounded-full bg-red-500" style={{ width: `${deletionPercent}%` }} />
+
+          <div className="h-1.5 overflow-hidden rounded-full bg-red-50">
+            <div
+              className="h-full rounded-full bg-red-500"
+              style={{ width: `${deletionPercent}%` }}
+            />
           </div>
         </div>
       </div>
+
+      <p className="relative text-[10px] leading-none text-slate-400">
+        共 {totalChanges} 行变更
+      </p>
+
       <DashboardTooltip placement="top">
-        代码变更规模：{changedFileCount} 个文件，新增 {additions} 行，删除 {deletions} 行。点击查看智能审查顺序。
+        代码变更规模：{changedFileCount} 个文件，新增 {additions} 行，删除 {deletions} 行。点击查看预规则分析。
       </DashboardTooltip>
     </button>
   );

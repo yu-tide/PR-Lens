@@ -8,6 +8,10 @@ export interface ReviewRisk {
   reason: string;
   suggestion: string;
   requiresHumanCheck: boolean;
+  /** AI 对该风险的置信度 (0-100)，可选 */
+  confidence?: number;
+  /** AI 提供的证据条目，可选 */
+  evidence?: EvidenceItem[];
 }
 
 export interface ReviewSuggestion {
@@ -27,6 +31,20 @@ export interface ReviewResult {
   risks: ReviewRisk[];
   suggestions: ReviewSuggestion[];
   testGaps?: AiTestGap[];
+  /** AI 生成的评论草稿，优先于前端兜底生成 */
+  draftComments?: ReviewDraftComment[];
+}
+
+/** AI 生成的评论草稿 */
+export interface ReviewDraftComment {
+  id?: string;
+  sourceFindingId?: string;
+  title: string;
+  body: string;
+  severity?: "HIGH" | "MEDIUM" | "LOW" | "high" | "medium" | "low";
+  file?: string;
+  line?: number;
+  confidence?: number;
 }
 
 export interface AiTestGap {
@@ -118,6 +136,7 @@ export type AppErrorCode =
   | "REPORT_BUILD_ERROR"
   | "NETWORK_ERROR"
   | "MOCK_MODE"
+  | "AI_MOCK_FALLBACK"
   | "UNKNOWN_ERROR";
 
 /** 错误发生阶段 */
@@ -284,7 +303,7 @@ export interface ReportBuilderInput {
 // ============================================================
 
 /** 结果页 Tab */
-export type TabKey = "risk" | "suggestion" | "testGap" | "draft" | "order" | "markdown";
+export type TabKey = "risk" | "preRule" | "suggestion" | "testGap" | "draft" | "markdown";
 
 /** Review Order 中的一条文件审查优先级 */
 export interface ReviewOrderItem {
@@ -335,6 +354,8 @@ export interface TestGapDisplay {
   severity: "high" | "medium" | "low";
   reason: string;
   suggestedTestCases: string[];
+  /** 来源：ai=AI 生成，rule=规则推断（非 AI） */
+  source: "ai" | "rule";
 }
 
 /** 评论草稿 */
