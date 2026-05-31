@@ -255,11 +255,21 @@ export function buildAiReviewPrompt(input: AiAnalysisInput): {
     '      "category": "Correctness | Security | Maintainability | Testing | Documentation",',
     '      "suggestion": "具体可执行的建议"',
     "    }",
+    "  ],",
+    '  "testGaps": [',
+    "    {",
+    '      "id": "testgap-1",',
+    '      "sourceFile": "缺少测试的源文件路径",',
+    '      "expectedTestFile": "建议的测试文件路径（如 tests/xxx.test.ts）",',
+    '      "severity": "high | medium | low",',
+    '      "reason": "为什么需要补充测试——未覆盖的场景/输入/边界",',
+    '      "suggestedTestCases": ["应添加的测试用例 1", "应添加的测试用例 2"]',
+    "    }",
     "  ]",
     "}",
     "```",
     "",
-    "注意：risks 和 suggestions 数组各至少包含 1 条，最多各 5 条。不要返回任何 JSON 之外的内容。",
+    "注意：risks 和 suggestions 数组各至少包含 1 条，最多各 5 条。testGaps 可选，最多 3 条。不要返回任何 JSON 之外的内容。",
   );
 
   return {

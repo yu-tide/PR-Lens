@@ -2,7 +2,7 @@
 // PR Lens — AI 输出解析与清洗
 // ============================================================
 
-import type { ReviewResult, ReviewRisk, ReviewSuggestion } from "@/types";
+import type { AiTestGap, ReviewResult, ReviewRisk, ReviewSuggestion } from "@/types";
 
 // ============================================================
 // 类型守卫工具
@@ -87,6 +87,7 @@ function buildReviewResult(obj: Record<string, unknown>): ReviewResult {
     summary: extractSummary(obj),
     risks: extractRisks(obj),
     suggestions: extractSuggestions(obj),
+    testGaps: extractTestGaps(obj),
   };
 }
 
@@ -162,6 +163,50 @@ function extractSuggestions(
         suggestion,
       };
     });
+}
+
+function extractTestGaps(
+  obj: Record<string, unknown>,
+): AiTestGap[] | undefined {
+  const testGaps = obj.testGaps;
+  if (!isArray(testGaps) || testGaps.length === 0) return undefined;
+
+  const gaps = testGaps
+    .filter(isObject)
+    .map((g, index) => {
+      const id = isString(g.id) && g.id.trim()
+        ? g.id.trim()
+        : `ai-testgap-${index + 1}`;
+
+      const sourceFile = isString(g.sourceFile)
+        ? g.sourceFile.trim()
+        : "未知文件";
+
+      const expectedTestFile = isString(g.expectedTestFile)
+        ? g.expectedTestFile.trim()
+        : undefined;
+
+      const severity = sanitizeRiskLevel(g.severity).toLowerCase() as "high" | "medium" | "low";
+
+      const reason = isString(g.reason) && g.reason.trim()
+        ? g.reason.trim()
+        : "需要补充测试覆盖";
+
+      const suggestedTestCases = isArray(g.suggestedTestCases)
+        ? g.suggestedTestCases.filter(isString).map((s) => (s as string).trim())
+        : [];
+
+      return {
+        id,
+        sourceFile,
+        expectedTestFile,
+        severity,
+        reason,
+        suggestedTestCases,
+      };
+    });
+
+  return gaps.length > 0 ? gaps : undefined;
 }
 
 /** 校验并标准化 risk level */
