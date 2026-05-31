@@ -1,19 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnalysisFloatingPanel } from "@/components/AnalysisFloatingPanel";
-import { AppHeader } from "@/components/AppHeader";
 import {
   GithubIcon,
-  FileIcon,
   FlashIcon,
   ShieldCheckIcon,
   MessageDotsIcon,
 } from "@/components/icons";
-import { analysisSteps, examplePRs, featureCards } from "@/mocks";
-import type { AnalysisStatus, AppError, FeatureCard } from "@/types";
+import { Logo } from "@/components/Logo";
+import { LoginModal } from "@/components/home/LoginModal";
+import { RegisterModal } from "@/components/home/RegisterModal";
+import { analysisSteps } from "@/mocks";
+import type { AnalysisStatus, AppError } from "@/types";
 import { requestAnalyzePr } from "@/services/client/analyzePrClient";
 
 const SESSION_KEY = "pr-lens:last-analysis";
@@ -24,6 +25,78 @@ type ReviewerPersona =
   | "testing"
   | "maintainability";
 
+type FeatureCard = {
+  id: string;
+  title: string;
+  description: string;
+  icon: "flash" | "shield" | "message";
+  tone: "blue" | "green" | "purple";
+};
+function HistoryLineIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        d="M3.5 12A8.5 8.5 0 1 0 6 5.96"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3.5 5.5v5h5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 7.75v4.75l3.25 1.95"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function LogoutLineIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        d="M10.5 6.25V5.5A2.5 2.5 0 0 1 13 3h4A2.5 2.5 0 0 1 19.5 5.5v13A2.5 2.5 0 0 1 17 21h-4a2.5 2.5 0 0 1-2.5-2.5v-.75"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 12h10"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.75 8.25 4 12l3.75 3.75"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 const reviewerPersonas: {
   id: ReviewerPersona;
   title: string;
@@ -56,6 +129,30 @@ const reviewerPersonas: {
   },
 ];
 
+const homeFeatureCards: FeatureCard[] = [
+  {
+    id: "change-parse",
+    title: "智能变更解析",
+    description: "自动识别 PR 中的核心改动，提炼文件变化、代码意图和影响范围。",
+    icon: "flash",
+    tone: "blue",
+  },
+  {
+    id: "risk-detect",
+    title: "风险点检测",
+    description: "分析权限、接口、边界条件、异常处理等潜在风险，提前发现隐患。",
+    icon: "shield",
+    tone: "green",
+  },
+  {
+    id: "ai-review",
+    title: "AI Review 建议",
+    description: "结合上下文生成可执行的 Review 建议，帮助更快完成代码审查。",
+    icon: "message",
+    tone: "purple",
+  },
+];
+
 function FeatureIcon({ feature }: { feature: FeatureCard }) {
   const toneClass = {
     blue: "bg-blue-50 text-blue-600",
@@ -74,8 +171,157 @@ function FeatureIcon({ feature }: { feature: FeatureCard }) {
   );
 }
 
+function HomeHeader({
+  user,
+  menuOpen,
+  setMenuOpen,
+  setLoginModalOpen,
+  setRegisterModalOpen,
+  handleLogout,
+  menuRef,
+}: {
+  user: { id: string; username: string } | null | undefined;
+  menuOpen: boolean;
+  setMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setLoginModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setRegisterModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  handleLogout: () => void;
+  menuRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <header className="relative z-40 h-[84px] shrink-0 border-b border-slate-100 bg-white">
+      <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-6">
+        <Link href="/">
+          <Logo />
+        </Link>
+
+        <div ref={menuRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-label="打开菜单"
+            className={`flex h-11 w-11 items-center justify-center rounded-xl border bg-white shadow-sm transition ${
+              menuOpen
+                ? "border-blue-200 text-blue-600 ring-4 ring-blue-50"
+                : "border-slate-200 text-slate-800 hover:border-blue-200 hover:text-blue-600"
+            }`}
+          >
+            <span className="flex flex-col gap-1.5">
+              <span className="block h-0.5 w-5 rounded-full bg-current" />
+              <span className="block h-0.5 w-5 rounded-full bg-current" />
+              <span className="block h-0.5 w-5 rounded-full bg-current" />
+            </span>
+          </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 top-14 z-50 w-[286px] overflow-hidden rounded-[28px] border border-white/70 bg-white/95 p-3 text-left shadow-2xl shadow-slate-300/70 backdrop-blur-xl">
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-50/70 via-white to-indigo-50/60" />
+
+              <div className="relative">
+                {user ? (
+                  <div className="space-y-3">
+                    <div className="rounded-[22px] border border-slate-100 bg-white/85 p-4 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-sm font-bold text-white shadow-lg shadow-blue-500/25">
+                          {user.username.slice(0, 1).toUpperCase()}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-slate-400">
+                            当前用户
+                          </div>
+                          <div className="mt-0.5 truncate text-sm font-semibold text-slate-900">
+                            {user.username}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Link
+                      href="/history"
+                      onClick={() => setMenuOpen(false)}
+                      className="group flex items-center justify-between rounded-[20px] border border-slate-100 bg-white/85 px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-100 hover:bg-blue-50/90 hover:text-blue-700 hover:shadow-md"
+                    >
+                      <span className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-sm ring-1 ring-blue-100/70">
+  <HistoryLineIcon className="h-5 w-5" />
+</span>
+                        历史分析
+                      </span>
+
+                      <span className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500">
+                        →
+                      </span>
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="group flex w-full items-center justify-between rounded-[20px] border border-red-100 bg-white/85 px-4 py-3 text-sm font-medium text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-red-50 hover:text-red-600 hover:shadow-md"
+                    >
+                      <span className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-red-50 text-red-500 shadow-sm ring-1 ring-red-100/80">
+  <LogoutLineIcon className="h-5 w-5" />
+</span>
+                        退出登录
+                      </span>
+
+                      <span className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-red-400">
+                        →
+                      </span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="rounded-[22px] border border-slate-100 bg-white/85 p-4 shadow-sm">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-base font-bold text-white shadow-lg shadow-blue-500/25">
+                        ✦
+                      </div>
+
+                      <h3 className="mt-4 text-base font-semibold tracking-tight text-slate-950">
+                        欢迎使用 PR Lens
+                      </h3>
+
+                      <p className="mt-2 text-sm leading-6 text-slate-500">
+                        登录后可使用更多功能
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginModalOpen(true);
+                        setMenuOpen(false);
+                      }}
+                      className="flex h-12 w-full items-center justify-center rounded-[20px] bg-blue-600 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-500/30"
+                    >
+                      登录
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRegisterModalOpen(true);
+                        setMenuOpen(false);
+                      }}
+                      className="flex h-12 w-full items-center justify-center rounded-[20px] border border-slate-200 bg-white/85 text-sm font-medium text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-100 hover:bg-blue-50 hover:text-blue-700 hover:shadow-md"
+                    >
+                      没账号？去注册
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}
+
 export default function HomePage() {
   const router = useRouter();
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const [prUrl, setPrUrl] = useState("");
   const [inputError, setInputError] = useState("");
@@ -88,22 +334,52 @@ export default function HomePage() {
 
   const [reviewerPersona, setReviewerPersona] =
     useState<ReviewerPersona>("security");
-  const [user, setUser] = useState<{ id: string; username: string } | null | undefined>(undefined);
 
-  useEffect(() => {
+  const [user, setUser] = useState<
+    { id: string; username: string } | null | undefined
+  >(undefined);
+
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [loginPrefill, setLoginPrefill] = useState("");
+  const [registerModalOpen, setRegisterModalOpen] = useState(false);
+
+  const canSubmit = useMemo(() => prUrl.trim().length > 0, [prUrl]);
+
+  const refreshUser = () => {
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setUser(data?.user ?? null))
       .catch(() => setUser(null));
+  };
+
+  useEffect(() => {
+    refreshUser();
   }, []);
 
-  const canSubmit = useMemo(() => prUrl.trim().length > 0, [prUrl]);
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!menuRef.current) return;
+
+      if (!menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [menuOpen]);
 
   const validatePRUrl = (url: string) => {
     return /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+\/?$/.test(url);
   };
 
-  /* 调用 API 分析，通过 onProgress 回调接收实时进度 */
   const runAnalysis = (
     body: {
       url?: string;
@@ -117,9 +393,7 @@ export default function HomePage() {
     requestAnalyzePr(
       body,
       isMockCall ? 30000 : 60000,
-      isMockCall
-        ? undefined
-        : (step) => setCurrentStep(step.stepIndex),
+      isMockCall ? undefined : (step) => setCurrentStep(step.stepIndex),
     )
       .then((data) => {
         if (data.success) {
@@ -143,9 +417,14 @@ export default function HomePage() {
             fetch("/api/history", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prUrl: inputUrlForStorage, response: data }),
+              body: JSON.stringify({
+                prUrl: inputUrlForStorage,
+                response: data,
+              }),
             });
-          } catch { /* 静默忽略 */ }
+          } catch {
+            /* 静默忽略 */
+          }
 
           setTimeout(() => setAnalysisStatus("success"), 400);
           return;
@@ -194,44 +473,46 @@ export default function HomePage() {
     );
   };
 
-  const handleUseExample = () => {
-    const exampleUrl = examplePRs[0]?.url;
-
-    if (!exampleUrl) return;
-
-    setInputError("");
-    setErrorMessage("");
-    setAppError(null);
-
-    setPrUrl(exampleUrl);
-    setPanelOpen(true);
-    setAnalysisStatus("analyzing");
-
-    runAnalysis(
-      {
-        useMock: true,
-        reviewerPersona,
-      },
-      exampleUrl,
-    );
-  };
-
   const handleViewResult = () => {
     router.push("/result");
   };
 
-  useEffect(() => {
-    return () => {};
-  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+    } catch {
+      /* 静默忽略 */
+    }
+
+    setUser(null);
+    setMenuOpen(false);
+  };
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden bg-[#f6f8fb] text-slate-950">
-      <div className="shrink-0">
-        <AppHeader />
-      </div>
+    <main className="relative flex h-screen flex-col overflow-hidden bg-[#f6f8fb] text-slate-950">
+      {menuOpen && (
+        <div className="pointer-events-none fixed inset-0 z-30 bg-white/35 backdrop-blur-[6px]" />
+      )}
 
-      <section className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 px-6 py-5">
-        <div className="relative flex min-h-0 w-full items-center overflow-hidden rounded-[32px] border border-slate-200 bg-white px-8 py-8 shadow-xl shadow-slate-200/70">
+      <HomeHeader
+        user={user}
+        menuOpen={menuOpen}
+        setMenuOpen={setMenuOpen}
+        setLoginModalOpen={setLoginModalOpen}
+        setRegisterModalOpen={setRegisterModalOpen}
+        handleLogout={handleLogout}
+        menuRef={menuRef}
+      />
+
+      <section className="relative mx-auto flex min-h-0 w-full max-w-7xl flex-1 px-6 py-5">
+        <div
+          className={`relative flex min-h-0 w-full items-center overflow-hidden rounded-[32px] border border-slate-200 bg-white px-8 py-8 shadow-xl shadow-slate-200/70 transition ${
+            menuOpen ? "blur-[1.5px]" : ""
+          }`}
+        >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(15,23,42,0.06)_1px,transparent_0)] [background-size:22px_22px]" />
           <div className="pointer-events-none absolute -left-24 top-20 h-72 w-72 rounded-full bg-blue-50 blur-2xl" />
           <div className="pointer-events-none absolute -right-24 bottom-16 h-72 w-72 rounded-full bg-indigo-50 blur-2xl" />
@@ -266,6 +547,7 @@ export default function HomePage() {
               </div>
 
               <button
+                type="button"
                 onClick={() => startAnalyze()}
                 disabled={!canSubmit || analysisStatus === "analyzing"}
                 className="flex h-14 items-center justify-center gap-3 rounded-2xl bg-blue-600 px-9 text-base font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
@@ -348,17 +630,8 @@ export default function HomePage() {
               </div>
             )}
 
-            <button
-              onClick={handleUseExample}
-              disabled={analysisStatus === "analyzing"}
-              className="mt-6 inline-flex h-11 items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 text-sm font-medium text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <FileIcon className="h-[18px] w-[18px]" />
-              使用示例 PR 快速体验
-            </button>
-
             <div className="mt-9 grid gap-5 text-left md:grid-cols-3">
-              {featureCards.map((feature) => (
+              {homeFeatureCards.map((feature) => (
                 <article
                   key={feature.id}
                   className="group flex gap-5 rounded-3xl border border-slate-100 bg-white/90 p-6 shadow-lg shadow-slate-200/60 transition hover:-translate-y-1 hover:shadow-xl hover:shadow-slate-200/80"
@@ -382,17 +655,34 @@ export default function HomePage() {
                 i
               </span>
               <span>* 当前仅支持公开 GitHub PR</span>
-              {user === null && (
-                <>
-                  <span className="text-slate-300">·</span>
-                  <Link href="/login" className="text-blue-600 hover:underline">登录</Link>
-                  <span className="text-slate-500">后可查看历史分析记录</span>
-                </>
-              )}
             </div>
           </div>
         </div>
       </section>
+
+      <LoginModal
+        open={loginModalOpen}
+        onClose={() => setLoginModalOpen(false)}
+        onSwitchToRegister={() => {
+          setLoginModalOpen(false);
+          setRegisterModalOpen(true);
+        }}
+        onSuccess={() => {
+          setLoginPrefill("");
+          refreshUser();
+        }}
+        prefillUsername={loginPrefill}
+      />
+
+      <RegisterModal
+        open={registerModalOpen}
+        onClose={() => setRegisterModalOpen(false)}
+        onSwitchToLogin={(prefill) => {
+          setRegisterModalOpen(false);
+          setLoginPrefill(prefill ?? "");
+          setLoginModalOpen(true);
+        }}
+      />
 
       <AnalysisFloatingPanel
         open={panelOpen}
