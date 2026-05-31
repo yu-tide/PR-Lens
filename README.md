@@ -5,7 +5,7 @@ AI PR Review 助手：输入 GitHub Pull Request 链接，自动生成 PR 变更
 Demo
 - 项目现已部署
   可访问链接：https://www.pr-lens.xyz
-- Demo 视频：待补充
+- Demo 视频：【AI PR Review 助手-哔哩哔哩】 https://b23.tv/qVeuVH8
 
 ---
 功能概览
