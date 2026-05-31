@@ -52,8 +52,8 @@ export function RiskWorkstation({ findings, onAddToDraft }: Props) {
                 </div>
 
                 <p
-                  className={`mt-1.5 line-clamp-2 text-sm font-medium leading-5 ${
-                    isActive ? "text-blue-800" : "text-slate-700"
+                  className={`mt-1.5 line-clamp-2 text-sm font-semibold leading-5 ${
+                    isActive ? "text-blue-800" : "text-slate-800"
                   }`}
                 >
                   {finding.title}

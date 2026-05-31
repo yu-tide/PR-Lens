@@ -22,6 +22,12 @@ const TABS: TabDef[] = [
     description: "按风险类型聚合规则与 AI 发现，并展示证据与置信度。",
   },
   {
+    key: "preRule",
+    label: "预规则分析",
+    icon: <SparkIcon className="h-4 w-4" />,
+    description: "展示确定性规则引擎命中的结果，支持逐条查看命中依据与建议。",
+  },
+  {
     key: "suggestion",
     label: "审查建议",
     icon: <MessageIcon className="h-4 w-4" />,
@@ -38,12 +44,6 @@ const TABS: TabDef[] = [
     label: "评论草稿箱",
     icon: <FileIcon className="h-4 w-4" />,
     description: "将风险发现整理成可编辑、可筛选、可复制的 Review 评论草稿。",
-  },
-  {
-    key: "order",
-    label: "智能审查顺序",
-    icon: <SparkIcon className="h-4 w-4" />,
-    description: "根据风险等级、审查依据与潜在影响面生成优先级。",
   },
   {
     key: "markdown",

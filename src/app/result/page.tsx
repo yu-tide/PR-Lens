@@ -1,8 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import {
   GithubIcon, CopyIcon, DownloadIcon, UserIcon, FolderIcon,
@@ -11,7 +9,7 @@ import {
 import { ChangedFilesModal } from "@/components/result/ChangedFilesModal";
 import { DraftTabSection } from "@/components/result/DraftTabSection";
 import { MarkdownTabSection } from "@/components/result/MarkdownTabSection";
-import { OrderTabSection } from "@/components/result/OrderTabSection";
+import { PreRuleAnalysisTab } from "@/components/result/PreRuleAnalysisTab";
 import { ResultDashboard } from "@/components/result/ResultDashboard";
 import { ResultTabs } from "@/components/result/ResultTabs";
 import { RiskWorkstation } from "@/components/result/RiskWorkstation";
@@ -25,15 +23,6 @@ import { useResultData } from "@/hooks/useResultData";
 import { useResultActions } from "@/hooks/useResultActions";
 
 export default function ResultPage() {
-    const router = useRouter();
-    const [user, setUser] = useState<{ id: string; username: string } | null | undefined>(undefined);
-
-    useEffect(() => {
-        fetch("/api/auth/me")
-            .then((res) => (res.ok ? res.json() : null))
-            .then((data) => setUser(data?.user ?? null))
-            .catch(() => setUser(null));
-    }, []);
 
     const {
         setAnalysisData, inputUrl,
@@ -43,7 +32,7 @@ export default function ResultPage() {
         activeTab, setActiveTab, draftComments, setDraftComments,
         isMock, displayChangedFiles, displayPrInfo,
         displayReviewFindings, displaySuggestions,
-        displayRuleCheckResults, displayTestGaps, displayReviewOrder,
+        displayRuleCheckResults, displayTestGaps,
         selectedDraftText, markdownReport, displayWarnings,
         displayOverview, displayDashboard,
         reviewerPersona,
@@ -92,18 +81,12 @@ export default function ResultPage() {
                             <section className={`${PAGE_CARD_CLASS} shrink-0`}>
                                 <div className="flex flex-col gap-5">
                                     <div>
-                                        <button
-                                            onClick={() => router.back()}
+                                        <Link
+                                            href="/"
                                             className="text-sm font-medium text-slate-500 transition hover:text-blue-600"
                                         >
                                             ← 返回上一页
-                                        </button>
-                                        {user && (
-                                            <>
-                                                <span className="text-sm text-slate-300">·</span>
-                                                <Link href="/history" className="text-sm font-medium text-slate-500 transition hover:text-blue-600">分析历史</Link>
-                                            </>
-                                        )}
+                                        </Link>
 
                                         <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">
                                             {displayPrInfo.title}
@@ -274,8 +257,8 @@ export default function ResultPage() {
                                         />
                                     )}
 
-                                    {activeTab === "order" && (
-                                        <OrderTabSection ruleCheckResults={displayRuleCheckResults} reviewOrder={displayReviewOrder} />
+                                    {activeTab === "preRule" && (
+                                        <PreRuleAnalysisTab ruleCheckResults={displayRuleCheckResults} />
                                     )}
 
                                     {activeTab === "markdown" && (
