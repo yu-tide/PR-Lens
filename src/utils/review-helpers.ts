@@ -1,6 +1,4 @@
-"use client";
-
-import type { AnalyzePrResponse, EvidenceItem, TestGapDisplay } from "@/types";
+import type { AnalyzePrResponse, EvidenceItem, RuleCheckResult, TestGapDisplay } from "@/types";
 
 type RiskLevel = "high" | "medium" | "low";
 
@@ -103,6 +101,29 @@ export function calculateRiskScore(items: RiskDisplay[]): number {
     const score = Math.round(base / items.length + boost);
 
     return Math.min(100, Math.max(0, score));
+}
+
+/**
+ * 规则锚定风险评分：确定性规则引擎分占 30%，AI 分占 70%。
+ * 规则引擎分对同一 PR 的同一 diff 是确定性的，起锚定作用。
+ */
+export function calculateAnchoredRiskScore(
+    aiRisks: RiskDisplay[],
+    ruleCheckResults: RuleCheckResult[],
+): number {
+    const aiScore = calculateRiskScore(aiRisks);
+
+    if (ruleCheckResults.length === 0) return aiScore;
+
+    const highCount = ruleCheckResults.filter((r) => r.severity === "high").length;
+    const mediumCount = ruleCheckResults.filter((r) => r.severity === "medium").length;
+    const lowCount = ruleCheckResults.filter((r) => r.severity === "low").length;
+
+    const ruleScore = Math.round(
+        (highCount * 100 + mediumCount * 62 + lowCount * 28) / ruleCheckResults.length,
+    ) || 18;
+
+    return Math.round(ruleScore * 0.3 + aiScore * 0.7);
 }
 
 export function parseSignedDisplayNumber(value: string): number {
