@@ -1,4 +1,4 @@
-import type { AnalyzePrResponse, EvidenceItem, RuleCheckResult, TestGapDisplay } from "@/types";
+import type { AnalyzePrResponse, EvidenceItem, ReviewFindingDisplay, RuleCheckResult, TestGapDisplay } from "@/types";
 
 type RiskLevel = "high" | "medium" | "low";
 
@@ -254,6 +254,23 @@ export function getConfidenceByLevel(level: RiskLevel, index: number): number {
     if (level === "high") return Math.max(82, 91 - index * 3);
     if (level === "medium") return Math.max(72, 84 - index * 3);
     return Math.max(62, 76 - index * 2);
+}
+
+export function normalizeDraftBody(body: string): string {
+    return body
+        .replace(/\r\n/g, "\n")
+        .replace(/\n{2,}/g, "\n")
+        .trim();
+}
+
+export function buildDraftCommentBody(finding: ReviewFindingDisplay): string {
+    return normalizeDraftBody([
+        `**${finding.title}**`,
+        finding.description,
+        `建议：${finding.suggestion}`,
+        `证据：${finding.evidence[0]?.file ?? "暂无"}${finding.evidence[0]?.line ? ` · 第 ${finding.evidence[0].line} 行` : ""}`,
+        `置信度：${finding.confidence}%`,
+    ].join("\n"));
 }
 
 export function buildTestGaps(files: string[]): TestGapDisplay[] {

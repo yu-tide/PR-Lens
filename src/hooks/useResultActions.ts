@@ -7,6 +7,7 @@ import type {
 import { requestAnalyzePr } from "@/services/client/analyzePrClient";
 import { SESSION_KEY } from "@/utils/result-fallbacks";
 import type { PrInfoDisplay } from "@/utils/result-fallbacks";
+import { buildDraftCommentBody } from "@/utils/review-helpers";
 
 // ============================================================
 // Hook Params
@@ -150,7 +151,7 @@ export function useResultActions({
           severity: finding.level,
           selected: true,
           edited: false,
-          body: `**${finding.title}**\n\n${finding.description}\n\n建议：${finding.suggestion}\n\n证据：${finding.evidence[0]?.file ?? "暂无"}${finding.evidence[0]?.line ? ` · 第 ${finding.evidence[0].line} 行` : ""}\n\n置信度：${finding.confidence}%`,
+          body: buildDraftCommentBody(finding),
         },
       ];
     });
