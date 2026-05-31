@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { AnalyzePrRequest, AnalyzePrResponse, AppError, AppErrorCode, ChangedFile, ReviewerPersona } from "@/types";
+import type { AnalyzePrRequest, AnalyzePrResponse, AppError, AppErrorCode, ChangedFile, ReviewResult, ReviewerPersona } from "@/types";
 import { mockPr, getMockReviewByPersona } from "@/mocks";
 import { parsePrUrl, ParsePrUrlError } from "@/services/github/parsePrUrl";
 import {
@@ -134,6 +134,50 @@ function parseReviewerPersona(raw: unknown): ReviewerPersona {
     return raw as ReviewerPersona;
   }
   return DEFAULT_PERSONA;
+}
+
+/**
+ * 当 AI 不可用时，根据规则检查结果构建降级 ReviewResult。
+ * 确保用户至少能看到规则引擎的分析，而不是白屏报错。
+ */
+function buildFallbackReviewResult(
+  prTitle: string,
+  changedFiles: ChangedFile[],
+  ruleCheckResults: ReturnType<typeof runRiskRules>,
+): ReviewResult {
+  const fileList = changedFiles.map((f) => f.filename).join("、");
+
+  const summary = ruleCheckResults.length > 0
+    ? `[AI 暂不可用] 本次 PR "${prTitle}" 变更了 ${changedFiles.length} 个文件（${fileList}）。规则引擎命中 ${ruleCheckResults.length} 条风险，请人工审查。`
+    : `[AI 暂不可用] 本次 PR "${prTitle}" 变更了 ${changedFiles.length} 个文件（${fileList}）。规则引擎未命中已知风险模式，建议人工审查。`;
+
+  const risks = ruleCheckResults.map((r, i) => ({
+    id: `fallback-risk-${i + 1}`,
+    level: (r.severity.toUpperCase() as "HIGH" | "MEDIUM" | "LOW"),
+    title: r.title,
+    file: r.file ?? "未知文件",
+    reason: r.message,
+    suggestion: "请人工审查该变更的安全性与正确性。",
+    requiresHumanCheck: r.severity === "high",
+    confidence: 85,
+  }));
+
+  const suggestions = [
+    {
+      id: "fallback-suggestion-1",
+      title: "人工审查高风险项",
+      category: "Security" as const,
+      suggestion: "当前 AI 分析不可用，请根据规则引擎命中的风险项逐项人工审查。",
+    },
+    {
+      id: "fallback-suggestion-2",
+      title: "稍后重试 AI 分析",
+      category: "Maintainability" as const,
+      suggestion: "AI 服务恢复后，建议重新触发分析以获取更全面的审查结果。",
+    },
+  ];
+
+  return { summary, risks, suggestions, testGaps: undefined };
 }
 
 // ============================================================
@@ -294,16 +338,16 @@ export async function POST(request: Request) {
         }
 
         if (lastAiError !== null) {
-          send({
-            type: "error",
-            code: "AI_API_ERROR",
-            message: `AI 分析失败（已重试 ${MAX_AI_RETRIES} 次）：${lastAiError}。请稍后重新分析。`,
-          });
-          controller.close();
-          return;
+          /* AI 不可用时降级为规则检查模式，返回部分结果 */
+          console.warn(`[analyze-pr] AI unavailable, falling back to rule-only mode`);
+          reviewResult = buildFallbackReviewResult(pr.title, changedFiles, ruleCheckResults);
+          aiSource = "mock";
         }
 
         const warnings: AppError[] = [];
+        if (lastAiError !== null) {
+          warnings.push(createAppError("AI_MOCK_FALLBACK", `AI 分析暂时不可用（${lastAiError}），当前展示规则检查结果。`));
+        }
 
         // ── Step 6: 生成报告 ──
         send({ type: "step", stepId: "report", stepIndex: 5, totalSteps: TOTAL_STEPS });

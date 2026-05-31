@@ -2,7 +2,7 @@
 // PR Lens — AI 输出解析与清洗
 // ============================================================
 
-import type { AiTestGap, ReviewResult, ReviewRisk, ReviewSuggestion } from "@/types";
+import type { AiTestGap, EvidenceItem, ReviewDraftComment, ReviewResult, ReviewRisk, ReviewSuggestion } from "@/types";
 
 // ============================================================
 // 类型守卫工具
@@ -88,6 +88,7 @@ function buildReviewResult(obj: Record<string, unknown>): ReviewResult {
     risks: extractRisks(obj),
     suggestions: extractSuggestions(obj),
     testGaps: extractTestGaps(obj),
+    draftComments: extractDraftComments(obj),
   };
 }
 
@@ -131,7 +132,26 @@ function extractRisks(obj: Record<string, unknown>): ReviewRisk[] {
       const requiresHumanCheck =
         level === "HIGH" || (r.requiresHumanCheck === true);
 
-      return { id, level, title, file, reason, suggestion, requiresHumanCheck };
+      const confidence = typeof r.confidence === "number"
+        && r.confidence >= 0
+        && r.confidence <= 100
+        ? r.confidence
+        : undefined;
+
+      let evidence: EvidenceItem[] | undefined;
+      if (isArray(r.evidence)) {
+        const items = r.evidence
+          .filter(isObject)
+          .map((e): EvidenceItem => ({
+            file: isString(e.file) ? e.file.trim() : file,
+            line: typeof e.line === "number" ? e.line : undefined,
+            code: isString(e.code) ? e.code.trim() : undefined,
+            reason: isString(e.reason) ? e.reason.trim() : reason,
+          }));
+        if (items.length > 0) evidence = items;
+      }
+
+      return { id, level, title, file, reason, suggestion, requiresHumanCheck, confidence, evidence };
     });
 }
 
@@ -207,6 +227,66 @@ function extractTestGaps(
     });
 
   return gaps.length > 0 ? gaps : undefined;
+}
+
+function extractDraftComments(
+  obj: Record<string, unknown>,
+): ReviewDraftComment[] | undefined {
+  const draftComments = obj.draftComments;
+  if (!isArray(draftComments) || draftComments.length === 0) return undefined;
+
+  const items = draftComments
+    .filter(isObject)
+    .map((d) => {
+      const title = isString(d.title) && d.title.trim()
+        ? d.title.trim()
+        : "";
+
+      const body = isString(d.body) && d.body.trim()
+        ? d.body.trim()
+        : "";
+
+      if (!title || !body) return null;
+
+      const sourceFindingId =
+        isString(d.sourceFindingId) && d.sourceFindingId.trim()
+          ? d.sourceFindingId.trim()
+          : undefined;
+
+      const severity = isString(d.severity)
+        ? (d.severity.toUpperCase() === "HIGH" ? "HIGH" as const
+          : d.severity.toUpperCase() === "MEDIUM" ? "MEDIUM" as const
+          : "LOW" as const)
+        : undefined;
+
+      const file = isString(d.file) && d.file.trim()
+        ? d.file.trim()
+        : undefined;
+
+      const line = typeof d.line === "number" && d.line > 0
+        ? d.line
+        : undefined;
+
+      const confidence = typeof d.confidence === "number"
+        && d.confidence >= 0
+        && d.confidence <= 100
+        ? d.confidence
+        : undefined;
+
+      const result: ReviewDraftComment = {
+        title,
+        body,
+      };
+      if (sourceFindingId) result.sourceFindingId = sourceFindingId;
+      if (severity) result.severity = severity;
+      if (file) result.file = file;
+      if (line) result.line = line;
+      if (confidence !== undefined) result.confidence = confidence;
+      return result;
+    })
+    .filter((item): item is ReviewDraftComment => item !== null);
+
+  return items.length > 0 ? items : undefined;
 }
 
 /** 校验并标准化 risk level */
